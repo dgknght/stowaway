@@ -14,7 +14,10 @@
     "Selects model records matching the specified criteria")
   (update
     [this model]
-    "Updates the specified model record")
+    [this attr criteria]
+    "Given two args, updates the specified model. Given three arguments,
+    applies the specified attributes to records matching the specified
+    criteria.")
   (delete
     [this model]
     "Deletes the specified model record")
