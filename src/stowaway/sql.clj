@@ -122,15 +122,15 @@
       :map)))
 
 (defn- disambiguate-attr
-  [attr target]
+  [attr {:keys [target] :as options}]
   (let [str-attr (name attr)]
     (if (and target
              (not (string/includes? str-attr ".")))
-      (keyword (str (plural (name target)) "." str-attr))
+      (keyword (str (name (model->table target options)) "." str-attr))
       attr)))
 
 (defmethod map->where :map
-  [m {:keys [prefix target] :as options}]
+  [m {:keys [prefix] :as options}]
   (let [prefix-fn (if prefix
                     (fn [k]
                       (if (string/includes? (name k) ".")
@@ -142,7 +142,7 @@
                     identity)
         result (->> m
                     (map (fn [kv]
-                           (update-in kv [0] (comp #(disambiguate-attr % target)
+                           (update-in kv [0] (comp #(disambiguate-attr % options)
                                                    prefix-fn
                                                    #(resolve-join-col % options)))))
                     (mapcat map-entry->statements))]
@@ -228,6 +228,29 @@
       sql)))
 
 (defn apply-criteria
+  "Adds a WHERE clause to a sql map based on the specified criteria.
+
+  The criteria can be a map, which will result in a set of conditions
+  joined by AND.
+
+  (apply-criteria {:first-name \"John\" :last-name \"Doe\"}) => {:where [:and [:= :first_name \"Jone\"] [:= :last_name \"Doe\"]]}
+
+  Maps can be joined with OR logic also.
+  [:or {:first-name \"John\"} {:last-name \"Doe\"}] => {:where [:or [:= :first_name \"John\"] [:= :last_name \"Doe\"]]}
+
+  Related tables can be included in a query by passing a :relationships
+  map in the options and including a compound key in the criteria.
+
+  (apply-criteria {[:user :last-name] \"Doe\"}
+                  {:target :order
+                   :relationships {#{:user :order} {:primary-table :users
+                                                    :foreign-table :orders
+                                                    :foreign-id :user_id}}}) => {:where [:= :users.last_name \"Doe\"]
+                                                                                 :from :orders
+                                                                                 :join [:users [:= :users.id :orders.user_id]]}
+  If a table name does not match the key used to identify the model type, it will
+  first be looked up from the :table-names map in options. Otherwise, an attempt
+  will be made to make it plural."
   ([sql criteria]
    (apply-criteria sql criteria {}))
   ([sql criteria options]
@@ -254,6 +277,12 @@
     (h/merge-join sql table criteria)))
 
 (defn deep-contains?
+  "Returns a boolean value indicating whether or not a field
+  is specified in a criteria structure.
+
+  (deep-contains? {:first-name \"John\"} :first-name) => true
+  (deep-contains? {:last-name \"Doe\"} :first-name) => false
+  (deep-contains? [:or {:first-name \"John\"} {:last-name \"Doe\"}] :first-name) => true"
   [data k]
   (cond
     (vector? data) (some #(deep-contains? % k) data)
@@ -261,6 +290,11 @@
     :else          false))
 
 (defn deep-get
+  "Returns the value specified for a field within a criteria structure.
+
+  (deep-get {:first-name \"John\"} :first-name) => \"John\"
+  (deep-get {:last-name \"Doe\"} :first-name) => nil
+  (deep-get [:or {:first-name \"John\"} {:last-name \"Doe\"}] :first-name) => \"John\""
   [data k]
   (cond
     (vector? data) (some #(deep-get % k) data)
@@ -281,6 +315,9 @@
     :else          data))
 
 (defmulti deep-dissoc
+  "Removes a value from a criteria structure.
+
+  (deep-dissoc [:or {:first-name \"John\"} {:last-name \"Doe\"}] :first-name) => {:last-name \"Doe\"}"
   (fn [data & _]
     (if (map? data)
       :map

@@ -137,3 +137,23 @@
                            {:last-name "Doe"}]
                           :last-name))
       "A redundant clause is removed"))
+
+(deftest update-a-value-if-it-exists
+  (is (= {:age 26}
+         (sql/update-in-if {:age 25} [:age] inc))
+      "The value is updated if it is present")
+  (is (= {}
+         (sql/update-in-if {} [:age] inc))
+      "The value is not added if it is not present"))
+
+(deftest update-a-vlaue-in-a-criteria-if-it-exists
+  (is (= [:or {:age 26} {:size "large"}]
+         (sql/update-in-if [:or {:age 25} {:size "large"}]
+                           [:age]
+                           inc))
+      "The value is updated if it is present")
+  (is (= [:or {:color "blue"} {:size "large"}]
+         (sql/update-in-if [:or {:color "blue"} {:size "large"}]
+                           [:age]
+                           inc))
+      "The value is not added if it is not present"))
