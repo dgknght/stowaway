@@ -112,6 +112,11 @@
                  values ; For now, assume this is a honeysql map. One day we'll make it storage agnostic
                  (map ensure-not-keyword values))]])
 
+      :or
+      [(apply vector :or (map (comp #(vector := k %)
+                                    ensure-not-keyword)
+                              (rest v)))]
+
       [[:in k (map ensure-not-keyword v)]])
     [[:= k (ensure-not-keyword v)]]))
 

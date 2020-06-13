@@ -75,6 +75,11 @@
                                  {:name "John"}
                                  {:age 25}]))
       "Two single-field equalities can be joined with 'or'")
+  (is (= {:where [:or
+                  [:= :name nil]
+                  [:= :name "John"]]}
+         (sql/apply-criteria {} {:name [:or nil "John"]}))
+      "Multiple values can be joined with :or for a single field")
   (let [expected {:where [:= :addresses.city "Dallas"]
                   :join [:addresses [:= :users.id :addresses.user_id]]}
         actual (sql/apply-criteria {}
