@@ -35,14 +35,16 @@
       "An offset is not applied if absent"))
 
 (deftest apply-sort-to-a-query
-  (is (= "SELECT * FROM users ORDER BY last_name, first_name DESC")
-      (-> (h/select :*)
-          (h/from :users)
-          (sql/apply-sort {:sort [:last_name [:first_name :desc]]})))
-  (is (= "SELECT * FROM users")
-      (-> (h/select :*)
-          (h/from :users)
-          (sql/apply-sort {}))))
+  (is (= ["SELECT * FROM users ORDER BY last_name, first_name DESC"]
+         (-> (h/select :*)
+             (h/from :users)
+             (sql/apply-sort {:sort [:last_name [:first_name :desc]]})
+             f/format)))
+  (is (= ["SELECT * FROM users"]
+         (-> (h/select :*)
+             (h/from :users)
+             (sql/apply-sort {})
+             f/format))))
 
 (deftest select-a-count
   (is (= ["SELECT count(1) AS record_count FROM users"]
@@ -147,8 +149,10 @@
       "The value is not added if it is not present"))
 
 (deftest update-a-vlaue-in-a-criteria-if-it-exists
-  (is (= [:or {:age 26} {:size "large"}]
-         (sql/update-in-if [:or {:age 25} {:size "large"}]
+  (is (= {:age 26
+          :size "large"}
+         (sql/update-in-if {:age 25
+                            :size "large"}
                            [:age]
                            inc))
       "The value is updated if it is present")
