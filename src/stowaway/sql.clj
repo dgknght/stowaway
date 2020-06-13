@@ -179,7 +179,8 @@
 
 (defn- apply-criteria-join
   [sql rel-key {:keys [target-alias] :as options}]
-  (let [existing-joins (->> (get-in sql [:join])
+  (let [existing-joins (->> [:join :left-join :right-join]
+                            (mapcat #(get-in sql [%]))
                             (partition 2)
                             (map (comp #(if (vector? %)
                                           (second %)

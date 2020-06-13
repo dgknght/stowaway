@@ -103,7 +103,43 @@
             2 3 4]]
     (when-not (= expected actual)
       (pprint (diff expected actual)))
-    (is (= expected actual))))
+    (is (= expected actual)
+        "A complex criteria structure is mapped correctly.")))
+
+(deftest an-existing-join-is-not-duplicated
+  (is (= ["SELECT * FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
+         (-> (h/select :*)
+             (h/from :orders)
+             (h/join :users [:= :users.id :orders.user_id])
+             (sql/apply-criteria {[:user :first_name] "Doug"}
+                                 {:target :order
+                                  :relationships {#{:order :user} {:primary-table :users
+                                                                   :foreign-table :orders
+                                                                   :foreign-id :user_id}}})
+             f/format))
+      "An inner join is not duplicated")
+  (is (= ["SELECT * FROM orders LEFT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
+         (-> (h/select :*)
+             (h/from :orders)
+             (h/left-join :users [:= :users.id :orders.user_id])
+             (sql/apply-criteria {[:user :first_name] "Doug"}
+                                 {:target :order
+                                  :relationships {#{:order :user} {:primary-table :users
+                                                                   :foreign-table :orders
+                                                                   :foreign-id :user_id}}})
+             f/format))
+      "An left join is not duplicated")
+  (is (= ["SELECT * FROM orders RIGHT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
+         (-> (h/select :*)
+             (h/from :orders)
+             (h/right-join :users [:= :users.id :orders.user_id])
+             (sql/apply-criteria {[:user :first_name] "Doug"}
+                                 {:target :order
+                                  :relationships {#{:order :user} {:primary-table :users
+                                                                   :foreign-table :orders
+                                                                   :foreign-id :user_id}}})
+             f/format))
+      "An right join is not duplicated"))
 
 (deftest apply-criteria-with-sub-query
   (let [subquery (-> (h/select :organization_id)
