@@ -182,6 +182,23 @@
   (merge {:primary-id :id}
          (get-in relationships [(set rel-key)])))
 
+(defn- join-cond
+  [{:keys [primary-table
+           primary-id
+           foreign-table
+           foreign-id]}]
+  (if (sequential? primary-id)
+    (->> foreign-id
+         (zipmap primary-id)
+         (map (fn [[pid fid]]
+                [:= (col-ref primary-table pid)
+                 (col-ref foreign-table fid)]))
+         (into [:and]))
+    [:=
+     (col-ref primary-table ; TODO: this will cause a problem with an alias specified and depth > 1
+              primary-id)
+     (col-ref foreign-table foreign-id)]))
+
 (defn- apply-criteria-join
   [sql rel-key {:keys [target-alias] :as options}]
   (let [existing-joins (->> [:join :left-join :right-join]
@@ -193,18 +210,15 @@
                                        first))
                             set)
         new-table (model->table (second rel-key) options)
-        {:keys [primary-table
-                primary-id
-                foreign-table
-                foreign-id]} (relationship rel-key options)]
-    (assert primary-table (str "No relationship defined for " (prn-str rel-key)))
+        rel (relationship rel-key options)]
+    (assert rel (str "No relationship defined for " (prn-str rel-key)))
     (if (existing-joins new-table)
       sql
-      (h/merge-join sql new-table
-                    [:=
-                     (col-ref (or target-alias primary-table) ; TODO: this will cause a problem with an alias specified and depth > 1
-                              primary-id)
-                     (col-ref foreign-table foreign-id)]))))
+      (h/merge-join sql
+                    new-table
+                    (join-cond (if target-alias
+                                 (assoc rel :primary-table target-alias)
+                                 rel))))))
 
 (defn- apply-criteria-join-chain
   [sql join-key {:keys [target] :as options}]

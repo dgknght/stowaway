@@ -160,6 +160,20 @@
       (pprint (diff expected actual)))
     (is (= expected actual))))
 
+(deftest apply-criteria-with-join-on-compound-key
+  (let [actual (-> (h/select :transactions.*)
+                   (h/from :transactions)
+                   (sql/apply-criteria {[:attachment :id] 101}
+                                       {:target :transaction
+                                        :relationships {#{:transaction :attachment} {:primary-table :transactions
+                                                                                     :foreign-table :attachments
+                                                                                     :primary-id [:transaction_date :id]
+                                                                                     :foreign-id [:transaction_date :transaction_id]}}})
+                   f/format)
+        expected ["SELECT transactions.* FROM transactions INNER JOIN attachments ON (transactions.transaction_date = attachments.transaction_date AND transactions.id = attachments.transaction_id) WHERE attachments.id = ?"
+                  101]]
+    (is (= expected actual))))
+
 (deftest test-for-deeply-contained-key
   (is (sql/deep-contains? {:one 1} :one))
   (is (sql/deep-contains? [:and {:one 1}] :one)))
