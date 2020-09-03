@@ -1,7 +1,8 @@
 (ns stowaway.sql
   (:require [clojure.string :as string]
             [camel-snake-kebab.core :refer [->snake_case_string]]
-            [honeysql.helpers :as h]))
+            [honeysql.helpers :as h]
+            [honeysql.core :as sql]))
 
 ; TODO: move this to an inflection library
 
@@ -92,6 +93,28 @@
                (->snake_case_string (last column-spec))))
     column-spec))
 
+(defmulti delimit
+  type)
+
+(defmethod delimit java.lang.String
+  [value]
+  (str "\"" value "\""))
+
+(defmethod delimit clojure.lang.Keyword
+  [value]
+  (str "\"" (name value) "\""))
+
+(defmethod delimit :default
+  [value]
+  (str value))
+
+(defn- postgres-array
+  [values]
+  (format "'{%s}'"
+          (->> values
+               (map delimit)
+               (string/join ","))))
+
 (defn- map-entry->statements
   [[k v]]
   (if (coll? v)
@@ -116,6 +139,9 @@
       [(apply vector :or (map (comp #(vector := k %)
                                     ensure-not-keyword)
                               (rest v)))]
+
+      :&
+      [(sql/raw [(postgres-array (second v)) " && " k])]
 
       [[:in k (map ensure-not-keyword v)]])
     [[:= k (ensure-not-keyword v)]]))

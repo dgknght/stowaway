@@ -111,6 +111,13 @@
     (is (= expected actual)
         "A complex criteria structure is mapped correctly.")))
 
+(deftest apply-criteria-to-array-field
+  (is (= ["SELECT * FROM orders WHERE '{\"rush\",\"preferred\"}' && tags"]
+         (-> (h/select :*)
+             (h/from :orders)
+             (sql/apply-criteria {:tags [:& #{:rush :preferred}]})
+             f/format))))
+
 (deftest an-existing-join-is-not-duplicated
   (is (= ["SELECT * FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
          (-> (h/select :*)
