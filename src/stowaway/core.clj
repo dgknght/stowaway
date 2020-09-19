@@ -62,8 +62,8 @@
   "Binds a reified storage strategy to the
   specified var.
 
-  (with-storage [storage config]
-    (storage/update my-model))"
+  (with-storage [stg config]
+    (storage/update stg my-model))"
   [binding & body]
   `(let [s# (reify-storage ~(second binding))
          f# (fn* [~(first binding)] ~@body)]
@@ -72,8 +72,9 @@
 (defmacro with-transacted-storage
   "Evaluates the body in the context of a transaction using the configured
   storage mechanism.
-  (transacted-storage [storage config]
-  ...do stuff with the storage...)"
+  (transacted-storage [trns config]
+    (storage/update trns my-first-model)
+    (storage/update trns my-other-model)))"
   [binding & body]
   `(let [s# (reify-storage ~(second binding))
          f# (fn* [~(first binding)] ~@body)]
