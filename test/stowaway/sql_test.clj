@@ -80,6 +80,13 @@
                   [:= :name "John"]]}
          (sql/apply-criteria {} {:name [:or nil "John"]}))
       "Multiple values can be joined with :or for a single field")
+  (is (= {:where [:and
+                  [:>= :my-number 1]
+                  [:< :my-number 5] ]}
+         (sql/apply-criteria {} {:my-number [:and
+                  [:>= 1]
+                  [:< 5]]}))
+      "Multiple values can be joined with :and for a single field")
   (let [expected {:where [:= :addresses.city "Dallas"]
                   :join [:addresses [:= :users.id :addresses.user_id]]}
         actual (sql/apply-criteria {}

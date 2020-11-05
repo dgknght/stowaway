@@ -135,6 +135,12 @@
                  values ; For now, assume this is a honeysql map. One day we'll make it storage agnostic
                  (map ensure-not-keyword values))]])
 
+      :and
+      [(apply vector :and (->> (rest v)
+                               (interleave (repeat k))
+                               (partition 2)
+                               (mapcat map-entry->statements)))]
+
       :or
       [(apply vector :or (map (comp #(vector := k %)
                                     ensure-not-keyword)
