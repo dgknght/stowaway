@@ -1,5 +1,5 @@
 (ns stowaway.sql-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [clojure.data :refer [diff]]
             [clojure.pprint :refer [pprint]]
             [honeysql.helpers :as h]
@@ -56,7 +56,14 @@
          (-> (h/select :*)
              (h/from :users)
              (sql/select-count {})
-             f/format))))
+             f/format)))
+  (testing "any order by clause is removed"
+    (is (= ["SELECT count(1) AS record_count FROM users"]
+         (-> (h/select :*)
+             (h/from :users)
+             (h/order-by [:last-name])
+             (sql/select-count {:count true})
+             f/format)))))
 
 (deftest apply-criteria-to-sql
   (is (= {:where [:= :name "John"]}

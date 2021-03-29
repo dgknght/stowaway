@@ -54,7 +54,9 @@
 (defn select-count
   [sql {:keys [count]}]
   (if count
-    (h/select sql [:%count.1 :record_count])
+    (-> sql
+        (dissoc :order-by)
+        (h/select [:%count.1 :record_count]))
     sql))
 
 (defn- ensure-not-keyword
