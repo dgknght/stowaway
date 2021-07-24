@@ -1,11 +1,13 @@
 (ns stowaway.sql
   (:require [clojure.string :as string]
             [camel-snake-kebab.core :refer [->snake_case_string]]
-            [honeysql.helpers :as h]
-            [honeysql.core :as sql]))
+            [honey.sql.helpers :as h]
+            [honey.sql :as sql]))
+
+(sql/register-op! (keyword "@>"))
+(sql/register-op! (keyword "&&"))
 
 ; TODO: move this to an inflection library
-
 (defn- apply-word-rule
   [word {pattern :pattern f :fn}]
   (when-let [match (re-find pattern word)]
@@ -55,7 +57,7 @@
   [sql {:keys [count]}]
   (if count
     (-> sql
-        (dissoc :order-by)
+        (dissoc :select :order-by)
         (h/select [:%count.1 :record_count]))
     sql))
 
@@ -148,8 +150,11 @@
                                     ensure-not-keyword)
                               (rest v)))]
 
-      :&
-      [(sql/raw [(postgres-array (second v)) " && " k])]
+      :contained-by
+      [[(keyword "@>") (second v) k]]
+
+      :&&
+      [[(first v) (postgres-array (second v)) k]]
 
       [[:in k (map ensure-not-keyword v)]])
     [[:= k (ensure-not-keyword v)]]))
@@ -248,11 +253,11 @@
     (assert rel (str "No relationship defined for " (prn-str rel-key)))
     (if (existing-joins new-table)
       sql
-      (h/merge-join sql
-                    new-table
-                    (join-cond (if target-alias
-                                 (assoc rel :primary-table target-alias)
-                                 rel))))))
+      (h/join sql
+              new-table
+              (join-cond (if target-alias
+                           (assoc rel :primary-table target-alias)
+                           rel))))))
 
 (defn- apply-criteria-join-chain
   [sql join-key {:keys [target] :as options}]
@@ -297,11 +302,11 @@
 
   (apply-criteria {[:user :last-name] \"Doe\"}
                   {:target :order
-                   :relationships {#{:user :order} {:primary-table :users
-                                                    :foreign-table :orders
-                                                    :foreign-id :user_id}}}) => {:where [:= :users.last_name \"Doe\"]
-                                                                                 :from :orders
-                                                                                 :join [:users [:= :users.id :orders.user_id]]}
+                  :relationships {#{:user :order} {:primary-table :users
+                                                   :foreign-table :orders
+                                                   :foreign-id :user_id}}}) => {:where [:= :users.last_name \"Doe\"]
+                                                                                :from :orders
+                                                                                :join [:users [:= :users.id :orders.user_id]]}
   If a table name does not match the key used to identify the model type, it will
   first be looked up from the :table-names map in options. Otherwise, an attempt
   will be made to make it plural."
@@ -310,7 +315,7 @@
   ([sql criteria options]
    (if (seq criteria)
      (-> sql
-         (h/merge-where (map->where criteria options))
+         (h/where (map->where criteria options))
          (ensure-criteria-joins criteria options))
      sql)))
 
@@ -328,7 +333,7 @@
   [sql table criteria]
   (if (joins-table? sql table)
     sql
-    (h/merge-join sql table criteria)))
+    (h/join sql table criteria)))
 
 (defn deep-contains?
   "Returns a boolean value indicating whether or not a field
@@ -384,8 +389,8 @@
 (defmethod deep-dissoc :clause
   [data k]
   (let [args (->> (rest data)
-                    (map #(deep-dissoc % k))
-                    (remove empty?))]
+                  (map #(deep-dissoc % k))
+                  (remove empty?))]
     (if (= 1 (count args))
       (first args)
       (apply vector (first data) args))))

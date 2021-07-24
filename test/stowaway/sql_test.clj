@@ -2,8 +2,9 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.data :refer [diff]]
             [clojure.pprint :refer [pprint]]
-            [honeysql.helpers :as h]
-            [honeysql.format :as f]
+            [honey.sql.helpers :as h]
+            [honey.sql :as hsql]
+            [stowaway.geometry :as geo]
             [stowaway.sql :as sql]))
 
 (deftest apply-a-limit
@@ -11,13 +12,13 @@
          (-> (h/select :*)
              (h/from :users)
              (sql/apply-limit {:limit 10})
-             f/format))
+             hsql/format))
       "A limit is applied when present")
   (is (= ["SELECT * FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (sql/apply-limit {:offset 20})
-             f/format))
+             hsql/format))
       "A limit is not applied if absent"))
 
 (deftest apply-an-offset
@@ -25,45 +26,45 @@
          (-> (h/select :*)
              (h/from :users)
              (sql/apply-offset {:offset 20})
-             f/format))
+             hsql/format))
       "An offset is applied when present")
   (is (= ["SELECT * FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (sql/apply-offset {:limit 10})
-             f/format))
+             hsql/format))
       "An offset is not applied if absent"))
 
 (deftest apply-sort-to-a-query
-  (is (= ["SELECT * FROM users ORDER BY last_name, first_name DESC"]
+  (is (= ["SELECT * FROM users ORDER BY last_name ASC, first_name DESC"]
          (-> (h/select :*)
              (h/from :users)
              (sql/apply-sort {:sort [:last_name [:first_name :desc]]})
-             f/format)))
+             hsql/format)))
   (is (= ["SELECT * FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (sql/apply-sort {})
-             f/format))))
+             hsql/format))))
 
 (deftest select-a-count
-  (is (= ["SELECT count(1) AS record_count FROM users"]
+  (is (= ["SELECT COUNT(1) AS record_count FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (sql/select-count {:count true})
-             f/format)))
+             hsql/format)))
   (is (= ["SELECT * FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (sql/select-count {})
-             f/format)))
+             hsql/format)))
   (testing "any order by clause is removed"
-    (is (= ["SELECT count(1) AS record_count FROM users"]
+    (is (= ["SELECT COUNT(1) AS record_count FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (h/order-by [:last-name])
              (sql/select-count {:count true})
-             f/format)))))
+             hsql/format)))))
 
 (deftest apply-criteria-to-sql
   (is (= {:where [:= :name "John"]}
@@ -113,8 +114,8 @@
                                          {:first-name "Jane"}]
                                         {:age [:between 20 30]
                                          :size [:in '(2 3 4)]}])
-                   f/format)
-        expected ["SELECT first_name FROM users WHERE ((first_name = ? OR first_name = ?) AND (age >= ? AND age <= ? AND (size in (?, ?, ?))))"
+                   hsql/format)
+        expected ["SELECT first_name FROM users WHERE ((first_name = ?) OR (first_name = ?)) AND ((age >= ?) AND (age <= ?) AND (size IN (?, ?, ?)))"
             "John"
             "Jane"
             20
@@ -126,11 +127,11 @@
         "A complex criteria structure is mapped correctly.")))
 
 (deftest apply-criteria-to-array-field
-  (is (= ["SELECT * FROM orders WHERE '{\"rush\",\"preferred\"}' && tags"]
+  (is (= ["SELECT * FROM orders WHERE ? && tags" "'{\"rush\",\"preferred\"}'"]
          (-> (h/select :*)
              (h/from :orders)
-             (sql/apply-criteria {:tags [:& #{:rush :preferred}]})
-             f/format))))
+             (sql/apply-criteria {:tags [:&& #{:rush :preferred}]})
+             hsql/format))))
 
 (deftest an-existing-join-is-not-duplicated
   (is (= ["SELECT * FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
@@ -142,7 +143,7 @@
                                   :relationships {#{:order :user} {:primary-table :users
                                                                    :foreign-table :orders
                                                                    :foreign-id :user_id}}})
-             f/format))
+             hsql/format))
       "An inner join is not duplicated")
   (is (= ["SELECT * FROM orders LEFT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
          (-> (h/select :*)
@@ -153,7 +154,7 @@
                                   :relationships {#{:order :user} {:primary-table :users
                                                                    :foreign-table :orders
                                                                    :foreign-id :user_id}}})
-             f/format))
+             hsql/format))
       "An left join is not duplicated")
   (is (= ["SELECT * FROM orders RIGHT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
          (-> (h/select :*)
@@ -164,7 +165,7 @@
                                   :relationships {#{:order :user} {:primary-table :users
                                                                    :foreign-table :orders
                                                                    :foreign-id :user_id}}})
-             f/format))
+             hsql/format))
       "An right join is not duplicated"))
 
 (deftest apply-criteria-with-sub-query
@@ -174,8 +175,8 @@
         actual (-> (h/select :*)
                    (h/from :organizations)
                    (sql/apply-criteria {:id [:in subquery]})
-                   f/format)
-        expected ["SELECT * FROM organizations WHERE (id in (SELECT organization_id FROM memberships WHERE user_id = ?))"
+                   hsql/format)
+        expected ["SELECT * FROM organizations WHERE id IN (SELECT organization_id FROM memberships WHERE user_id = ?)"
                   123]]
     (when-not (= expected actual)
       (pprint (diff expected actual)))
@@ -190,8 +191,8 @@
                                                                                      :foreign-table :attachments
                                                                                      :primary-id [:transaction_date :id]
                                                                                      :foreign-id [:transaction_date :transaction_id]}}})
-                   f/format)
-        expected ["SELECT transactions.* FROM transactions INNER JOIN attachments ON (transactions.transaction_date = attachments.transaction_date AND transactions.id = attachments.transaction_id) WHERE attachments.id = ?"
+                   hsql/format)
+        expected ["SELECT transactions.* FROM transactions INNER JOIN attachments ON (transactions.transaction_date = attachments.transaction_date) AND (transactions.id = attachments.transaction_id) WHERE attachments.id = ?"
                   101]]
     (is (= expected actual))))
 
@@ -237,3 +238,11 @@
                            [:age]
                            inc))
       "The value is not added if it is not present"))
+
+(deftest query-against-a-point
+  (is (= ["SELECT * FROM locations WHERE ? @> center", (geo/->Circle (geo/->Point 2 2) 3)]
+         (-> (h/select :*)
+             (h/from :locations)
+             (sql/apply-criteria {:center [:contained-by :?geoloc]})
+             (hsql/format {:params {:geoloc (geo/->Circle (geo/->Point 2 2) 3)}})))
+      "The SQL is constructed correctly"))
