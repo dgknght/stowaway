@@ -218,8 +218,8 @@
 
 (defn- relationship
   [rel-key {:keys [relationships]}]
-  (merge {:primary-id :id}
-         (get-in relationships [(set rel-key)])))
+  (when-let [rel (get-in relationships [(set rel-key)])]
+    (merge rel {:primary-id :id})))
 
 (defn- join-cond
   [{:keys [primary-table

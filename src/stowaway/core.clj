@@ -21,6 +21,9 @@
   (delete
     [this model]
     "Deletes the specified model record")
+  (delete-by
+    [this criteria]
+    "Delete all models matching the specified criteria")
 
   ; Data integrity utilities
   ; ------------------------

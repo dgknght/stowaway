@@ -63,3 +63,7 @@
   (assert-storage-present)
   (core/delete *storage* model))
 
+(defn delete-by
+  [model]
+  (assert-storage-present)
+  (core/delete-by *storage* model))
