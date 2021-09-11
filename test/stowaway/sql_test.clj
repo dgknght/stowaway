@@ -1,6 +1,7 @@
 (ns stowaway.sql-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.data :refer [diff]]
+            [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
@@ -103,9 +104,7 @@
                                     :relationships {#{:user :address} {:primary-table :users
                                                                        :foreign-table :addresses
                                                                        :foreign-id    :user_id}}})]
-    (when-not (= expected actual)
-      (pprint (diff expected actual)))
-    (is (= expected actual) "A join can be infered"))
+    (is (= expected actual) "A primary id can be infered"))
   (let [actual (-> (h/select :first_name)
                    (h/from :users)
                    (sql/apply-criteria [:and
@@ -121,8 +120,6 @@
             20
             30
             2 3 4]]
-    (when-not (= expected actual)
-      (pprint (diff expected actual)))
     (is (= expected actual)
         "A complex criteria structure is mapped correctly.")))
 
@@ -192,7 +189,14 @@
                                                                                      :primary-id [:transaction_date :id]
                                                                                      :foreign-id [:transaction_date :transaction_id]}}})
                    hsql/format)
-        expected ["SELECT transactions.* FROM transactions INNER JOIN attachments ON (transactions.transaction_date = attachments.transaction_date) AND (transactions.id = attachments.transaction_id) WHERE attachments.id = ?"
+        expected [(string/join
+                    " "
+                    ["SELECT transactions.*"
+                     "FROM transactions"
+                     "INNER JOIN attachments"
+                     "ON (transactions.transaction_date = attachments.transaction_date)"
+                     "AND (transactions.id = attachments.transaction_id)"
+                     "WHERE attachments.id = ?"])
                   101]]
     (is (= expected actual))))
 
