@@ -1,6 +1,7 @@
 (ns stowaway.sql
   (:require [clojure.string :as string]
-            [camel-snake-kebab.core :refer [->snake_case_string]]
+            [camel-snake-kebab.core :refer [->snake_case_string
+                                            ->kebab-case-keyword]]
             [honey.sql.helpers :as h]
             [honey.sql :as sql]))
 
@@ -243,14 +244,15 @@
   (let [existing-joins (->> [:join :left-join :right-join]
                             (mapcat #(get-in sql [%]))
                             (partition 2)
-                            (map (comp #(if (vector? %)
+                            (map (comp ->kebab-case-keyword
+                                       #(if (vector? %)
                                           (second %)
                                           %)
                                        first))
                             set)
         new-table (model->table (second rel-key) options)
         rel (relationship rel-key options)]
-    (if (existing-joins new-table)
+    (if (existing-joins (->kebab-case-keyword new-table))
       sql
       (do
         (assert rel (str "No relationship defined for " (prn-str rel-key)))
