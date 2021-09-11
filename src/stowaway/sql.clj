@@ -230,12 +230,12 @@
     (->> foreign-id
          (zipmap primary-id)
          (map (fn [[pid fid]]
-                [:= (col-ref primary-table pid)
+                [:=
+                 (col-ref primary-table pid)
                  (col-ref foreign-table fid)]))
          (into [:and]))
     [:=
-     (col-ref primary-table ; TODO: this will cause a problem with an alias specified and depth > 1
-              primary-id)
+     (col-ref primary-table primary-id) ; TODO: this will cause a problem with an alias specified and depth > 1
      (col-ref foreign-table foreign-id)]))
 
 (defn- apply-criteria-join
