@@ -250,14 +250,15 @@
                             set)
         new-table (model->table (second rel-key) options)
         rel (relationship rel-key options)]
-    (assert rel (str "No relationship defined for " (prn-str rel-key)))
     (if (existing-joins new-table)
       sql
-      (h/join sql
-              new-table
-              (join-cond (if target-alias
-                           (assoc rel :primary-table target-alias)
-                           rel))))))
+      (do
+        (assert rel (str "No relationship defined for " (prn-str rel-key)))
+        (h/join sql
+                new-table
+                (join-cond (if target-alias
+                             (assoc rel :primary-table target-alias)
+                             rel)))))))
 
 (defn- apply-criteria-join-chain
   [sql join-key {:keys [target] :as options}]
