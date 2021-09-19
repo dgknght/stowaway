@@ -154,6 +154,9 @@
       :contained-by
       [[(keyword "@>") (second v) k]]
 
+      :any
+      [[:= (second v) [:any k]]]
+
       :&&
       [[(first v) (postgres-array (second v)) k]]
 
