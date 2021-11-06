@@ -125,7 +125,7 @@
   (if (coll? v)
     (case (first v)
 
-      (:= :> :>= :<= :< :<> :!=)
+      (:= :> :>= :<= :< :<> :!= :like)
       [[(first v) k (ensure-not-keyword (second v))]]
 
       :between
