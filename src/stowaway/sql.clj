@@ -132,6 +132,18 @@
       [[:>= k (ensure-not-keyword (second v))]
        [:<= k (ensure-not-keyword (nth v 2))]]
 
+      :between>
+      [[:>= k (ensure-not-keyword (second v))]
+       [:< k (ensure-not-keyword (nth v 2))]]
+
+      :<between
+      [[:> k (ensure-not-keyword (second v))]
+       [:<= k (ensure-not-keyword (nth v 2))]]
+
+      :<between>
+      [[:> k (ensure-not-keyword (second v))]
+       [:< k (ensure-not-keyword (nth v 2))]]
+
       :in
       (let [[op values] (if (= :in (first v))
                           v
