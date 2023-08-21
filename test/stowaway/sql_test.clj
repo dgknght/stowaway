@@ -121,7 +121,21 @@
             30
             2 3 4]]
     (is (= expected actual)
-        "A complex criteria structure is mapped correctly.")))
+        "A complex criteria structure is mapped correctly."))
+  (let [actual (-> (h/select :settings.name :users.first_name)
+                   (h/from :settings)
+                   (sql/apply-criteria {[:user :last-name] "Doe"}
+                                       {:target :setting
+                                        :relationships {#{:setting :user} {:primary-table :users
+                                                                           :foreign-table :settings
+                                                                           :foreign-id    :owner-id
+                                                                           :constraints   [[:= :settings.owner_id "user"]]}}})
+                   hsql/format)
+        expected ["SELECT settings.name, users.first_name FROM settings INNER JOIN users ON (users.id = settings.owner_id) AND (settings.owner_id = ?) WHERE users.last_name = ?"
+                  "user"
+                  "Doe"]]
+    (is (= expected actual)
+        "A complex join is mapped correctly.")))
 
 (deftest apply-criteria-to-array-field
   (is (= ["SELECT * FROM orders WHERE ? && tags" "'{\"rush\",\"preferred\"}'"]

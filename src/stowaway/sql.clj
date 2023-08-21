@@ -237,22 +237,27 @@
   (when-let [rel (get-in relationships [(set rel-key)])]
     (merge {:primary-id :id} rel)))
 
+(defn- join-stmt
+  [primary-table foreign-table primary-id foreign-id]
+  [:=
+   (col-ref primary-table primary-id)
+   (col-ref foreign-table foreign-id)])
+
 (defn- join-cond
   [{:keys [primary-table
            primary-id
            foreign-table
-           foreign-id]}]
-  (if (sequential? primary-id)
-    (->> foreign-id
-         (zipmap primary-id)
-         (map (fn [[pid fid]]
-                [:=
-                 (col-ref primary-table pid)
-                 (col-ref foreign-table fid)]))
-         (into [:and]))
-    [:=
-     (col-ref primary-table primary-id) ; TODO: this will cause a problem with an alias specified and depth > 1
-     (col-ref foreign-table foreign-id)]))
+           foreign-id
+           constraints]}]
+  (let [ids (if (sequential? primary-id)
+              (zipmap primary-id foreign-id)
+              [[primary-id foreign-id]])
+        stmts (concat (map #(apply join-stmt primary-table foreign-table %)
+                           ids)
+                      constraints)]
+    (if (= 1 (count stmts))
+      (first stmts)
+      (into [:and] stmts))))
 
 (defn- apply-criteria-join
   [sql rel-key {:keys [target-alias] :as options}]
