@@ -5,6 +5,10 @@
             [honey.sql.helpers :as h]
             [honey.sql :as sql]))
 
+(derive clojure.lang.PersistentVector ::vector)
+(derive clojure.lang.PersistentArrayMap ::map)
+(derive clojure.lang.PersistentHashMap ::map)
+
 (sql/register-op! (keyword "@>"))
 (sql/register-op! (keyword "&&"))
 
@@ -177,9 +181,7 @@
 
 (defmulti map->where
   (fn [criteria & _]
-    (if (sequential? criteria)
-      :clause
-      :map)))
+    (type criteria)))
 
 (defn- disambiguate-attr
   [attr {:keys [target] :as options}]
@@ -189,7 +191,7 @@
       (keyword (str (name (model->table target options)) "." str-attr))
       attr)))
 
-(defmethod map->where :map
+(defmethod map->where ::map
   [m {:keys [prefix] :as options}]
   (let [prefix-fn (if prefix
                     (fn [k]
@@ -211,23 +213,20 @@
       (concat [:and]
               result))))
 
-(defmethod map->where :clause
+(defmethod map->where ::vector
   [m options]
   (concat [(first m)]
           (map #(map->where % options)
                (rest m))))
 
-(defmulti ^:private extract-join-keys
-  #(if (sequential? %)
-     :clause
-     :map))
+(defmulti ^:private extract-join-keys type)
 
-(defmethod ^:private extract-join-keys :clause
+(defmethod ^:private extract-join-keys ::vector
   [criteria]
   (mapcat #(extract-join-keys %)
           (rest criteria)))
 
-(defmethod ^:private extract-join-keys :map
+(defmethod ^:private extract-join-keys ::map
   [criteria]
   (->> (keys criteria)
        (filter coll?)))
