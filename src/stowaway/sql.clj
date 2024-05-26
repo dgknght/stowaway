@@ -18,7 +18,7 @@
   (when-let [match (re-find pattern word)]
     (f match)))
 
-(defn- plural
+(defn plural
   [word]
   (let [rules [{:pattern #"(?i)\Achild\z"
                 :fn #(str % "ren")}
