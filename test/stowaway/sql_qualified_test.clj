@@ -20,7 +20,7 @@
 (deftest query-a-single-table-with-explicit-table-name
   (is (= ["SELECT people.* FROM people WHERE people.last_name = ?" "Doe"]
          (sql/->query #:user{:last-name "Doe"}
-                      {:table-names {:user "people"}}))))
+                      {:table-names {:user :people}}))))
 
 (deftest query-and-specify-a-limit
   (is (= ["SELECT users.* FROM users WHERE users.last_name = ? LIMIT ?" "Doe" 10]
@@ -87,10 +87,10 @@
           "Dallas"]
          (sql/->query {:address/city "Dallas"}
                       {:target :user
-                       :relationships {#{"users" "addresses"}
-                                       {:primary-table "users"
-                                        :foreign-table "addresses"
-                                        :foreign-id    "user_id"}}}))))
+                       :relationships {#{:users :addresses}
+                                       {:primary-table :users
+                                        :foreign-table :addresses
+                                        :foreign-id    :user_id}}}))))
 
 ; TODO: Test with complex join where not every table joins to the target
 

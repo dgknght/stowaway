@@ -5,7 +5,8 @@
             [stowaway.sql :as sql]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
-            [camel-snake-kebab.core :refer [->snake_case]]))
+            [camel-snake-kebab.core :refer [->snake_case]]
+            [clojure.pprint :as pp]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -27,7 +28,8 @@
 (defn- model->table
   [m {:keys [table-names]
       :or {table-names {}}}]
-  (get-in table-names [m] (-> m name plural)))
+  {:pre [(keyword? m)]}
+  (get-in table-names [m] (-> m name plural keyword)))
 
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
@@ -36,7 +38,7 @@
   (let [field (name k)
         model (namespace k)
         table-name (model->table (keyword model) opts)]
-    (keyword (->> [table-name field]
+    (keyword (->> [(name table-name) field]
                   (filter identity)
                   (map ->snake_case)
                   (str/join ".")))))
@@ -159,7 +161,9 @@
   [criteria {:keys [table relationships]
              :or {relationships {}}
              :as opts}]
-  (let [tables (map #(model->table % opts) (namespaces criteria))]
+  (let [tables (map (comp #(model->table % opts)
+                          keyword)
+                    (namespaces criteria))]
     (when (seq tables)
       (->> tables
            (remove #(= table %))
@@ -167,13 +171,13 @@
                                       primary-id
                                       foreign-table
                                       foreign-id]
-                               :or {primary-id "id"}}]
+                               :or {primary-id :id}}]
                            [(if (= table primary-table)
-                              (keyword foreign-table)
-                              (keyword primary-table))
+                              foreign-table
+                              primary-table)
                             [:=
-                             (keyword (str primary-table "." primary-id))
-                             (keyword (str foreign-table "." foreign-id))]])
+                             (keyword (str (name primary-table) "." (name primary-id)))
+                             (keyword (str (name foreign-table) "." (name foreign-id)))]])
                          relationships
                          (fn [t] #{table t})))))))
 
@@ -185,12 +189,12 @@
 
 (defn ->query
   [criteria & [{:keys [target] :as opts}]]
-  (let [x (or target
-              (keyword (single-ns criteria))
-              (throw (IllegalArgumentException. "No target specified.")))
-        table (model->table x opts)]
-    (-> (h/select (keyword (str table ".*")))
-        (h/from (keyword table))
+  (let [target (or target
+                   (keyword (single-ns criteria))
+                   (throw (IllegalArgumentException. "No target specified.")))
+        table (model->table target opts)]
+    (-> (h/select (keyword (str (name table) ".*")))
+        (h/from table)
         (h/where (->where criteria opts))
         (join (->joins criteria (assoc opts :table table)))
         (apply-sort opts)
