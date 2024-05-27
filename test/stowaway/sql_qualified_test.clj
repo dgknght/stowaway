@@ -68,14 +68,12 @@
                        {:user/first-name "John"}
                        {:user/age 25}]))))
 
-; (deftest apply-union-of-equality-values-for-a-single-field
-;   (is (= {:where [:or
-;                   [:= :name nil]
-;                   [:= :name "John"]]}
-;          (sql/apply-criteria {}
-;                              {:user/name [:or nil "John"]}))
-;       "Multiple values can be joined with :or for a single field"))
-; 
+(deftest query-against-a-union-of-values-for-a-single-field
+  (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.first_name = ?)"
+          "Jane"
+          "John"]
+         (sql/->query {:user/first-name [:or "Jane" "John"]}))))
+
 ; (deftest apply-comparison-operators
 ;   (is (= {:where [:and
 ;                   [:>= :my-number 1]
