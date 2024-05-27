@@ -74,17 +74,14 @@
           "John"]
          (sql/->query {:user/first-name [:or "Jane" "John"]}))))
 
-; (deftest apply-comparison-operators
-;   (is (= {:where [:and
-;                   [:>= :my-number 1]
-;                   [:< :my-number 5] ]}
-;          (sql/apply-criteria {}
-;                              {:tidbits/my-number [:and
-;                                                   [:>= 1]
-;                                                   [:< 5]]}
-;                              :target :tidbit))
-;       "Multiple values can be joined with :and for a single field"))
-; 
+(deftest query-against-comparison-operators
+  (is (= ["SELECT users.* FROM users WHERE (users.age >= ?) AND (users.age < ?)"
+          1 
+          5]
+         (sql/->query {:user/age [:and
+                                  [:>= 1]
+                                  [:< 5]]}))))
+
 ; (deftest apply-join-with-implied-primary-key
 ;   (let [expected {:where [:= :addresses.city "Dallas"]
 ;                   :join [:addresses [:= :users.id :addresses.user_id]]}
