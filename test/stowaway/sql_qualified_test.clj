@@ -88,9 +88,7 @@
          (sql/->query {:address/city "Dallas"}
                       {:target :user
                        :relationships {#{:users :addresses}
-                                       {:primary-table :users
-                                        :foreign-table :addresses
-                                        :foreign-id    :user_id}}}))))
+                                       [:= :users.id :addresses.user_id]}}))))
 
 ; TODO: Test with complex join where not every table joins to the target
 

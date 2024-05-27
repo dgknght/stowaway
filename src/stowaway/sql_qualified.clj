@@ -167,18 +167,10 @@
     (when (seq tables)
       (->> tables
            (remove #(= table %))
-           (mapcat (comp (fn [{:keys [primary-table
-                                      primary-id
-                                      foreign-table
-                                      foreign-id]
-                               :or {primary-id :id}}]
-                           [(if (= table primary-table)
-                              foreign-table
-                              primary-table)
-                            [:=
-                             (keyword (str (name primary-table) "." (name primary-id)))
-                             (keyword (str (name foreign-table) "." (name foreign-id)))]])
-                         relationships
+           (mapcat (comp (fn [[rel-key join-exp]]
+                           [(first (disj rel-key table))
+                            join-exp])
+                         (juxt identity relationships)
                          (fn [t] #{table t})))))))
 
 (defn- join
