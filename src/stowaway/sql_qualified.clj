@@ -155,15 +155,44 @@
     (when (= 1 (count ns))
       (first ns))))
 
+(defn ->joins
+  [criteria {:keys [table relationships]
+             :or {relationships {}}
+             :as opts}]
+  (let [tables (map #(model->table % opts) (namespaces criteria))]
+    (when (seq tables)
+      (->> tables
+           (remove #(= table %))
+           (mapcat (comp (fn [{:keys [primary-table
+                                      primary-id
+                                      foreign-table
+                                      foreign-id]
+                               :or {primary-id "id"}}]
+                           [(if (= table primary-table)
+                              (keyword foreign-table)
+                              (keyword primary-table))
+                            [:=
+                             (keyword (str primary-table "." primary-id))
+                             (keyword (str foreign-table "." foreign-id))]])
+                         relationships
+                         (fn [t] #{table t})))))))
+
+(defn- join
+  [sql joins]
+  (if (seq joins)
+    (assoc sql :join joins)
+    sql))
+
 (defn ->query
   [criteria & [{:keys [target] :as opts}]]
-  (let [target (or (keyword (single-ns criteria))
-                   target
-                   (throw (IllegalArgumentException. "No target specified.")))
-        table (model->table target opts)]
+  (let [x (or target
+              (keyword (single-ns criteria))
+              (throw (IllegalArgumentException. "No target specified.")))
+        table (model->table x opts)]
     (-> (h/select (keyword (str table ".*")))
         (h/from (keyword table))
         (h/where (->where criteria opts))
+        (join (->joins criteria (assoc opts :table table)))
         (apply-sort opts)
         (apply-limit opts)
         (apply-offset opts)

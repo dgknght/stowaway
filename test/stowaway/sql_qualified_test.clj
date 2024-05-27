@@ -82,18 +82,18 @@
                                   [:>= 1]
                                   [:< 5]]}))))
 
-; (deftest apply-join-with-implied-primary-key
-;   (let [expected {:where [:= :addresses.city "Dallas"]
-;                   :join [:addresses [:= :users.id :addresses.user_id]]}
-;         actual (sql/apply-criteria {}
-;                                    {:address/city "Dallas"}
-;                                    :target :user
-;                                    :relationships {#{:user :address}
-;                                                    {:primary-table :users
-;                                                     :foreign-table :addresses
-;                                                     :foreign-id    :user_id}})]
-;     (is (= expected actual) "A primary id can be infered")))
-; 
+(deftest query-against-a-join-with-inferred-primary-key
+  (is (= ["SELECT users.* FROM users INNER JOIN addresses ON users.id = addresses.user_id WHERE addresses.city = ?"
+          "Dallas"]
+         (sql/->query {:address/city "Dallas"}
+                      {:target :user
+                       :relationships {#{"users" "addresses"}
+                                       {:primary-table "users"
+                                        :foreign-table "addresses"
+                                        :foreign-id    "user_id"}}}))))
+
+; TODO: Test with complex join where not every table joins to the target
+
 ; (deftest apply-complex-criteria
 ;   (let [actual (-> (h/select :first_name)
 ;                    (h/from :users)
