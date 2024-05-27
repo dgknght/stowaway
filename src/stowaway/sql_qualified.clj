@@ -107,13 +107,27 @@
 
       [[:in k values]]))
 
+(defmulti ^:private ->clauses
+  (fn [criteria _opts]
+    (type criteria)))
+
+(defmethod ->clauses ::map
+  [criteria opts]
+  (->> criteria
+       (map (fn [e]
+              (update-in e [0] #(->col-ref % opts))))
+       (mapcat map-entry->statements)
+       seq))
+
+(declare ->where)
+
+(defmethod ->clauses ::vector
+  [[oper & criterias] opts]
+  [(apply vector oper (map #(->where % opts) criterias))])
+
 (defn ->where
   [criteria opts]
-  (when-let [clauses (->> criteria
-                     (map (fn [e]
-                            (update-in e [0] #(->col-ref % opts))))
-                     (mapcat map-entry->statements)
-                     seq)]
+  (when-let [clauses (->clauses criteria opts)]
     (if (= 1 (count clauses))
       (first clauses)
       (apply vector :and clauses))))

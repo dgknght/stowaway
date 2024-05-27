@@ -53,22 +53,21 @@
                        :sort [:user/last-name]
                        :count true})))))
 
-(deftest apply-multiple-simple-equality-criteria
+(deftest query-against-multiple-simple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
           "John"
           25]
          (sql/->query #:user{:first-name "John"
                              :age 25}))))
 
-; (deftest apply-union-of-multiple-equality-criteria
-;   (is (= {:where [:or
-;                   [:= :name "John"]
-;                   [:= :age 25]]}
-;          (sql/apply-criteria {} [:or
-;                                  {:user/name "John"}
-;                                  {:user/age 25}]))
-;       "Two single-field equalities can be joined with 'or'"))
-; 
+(deftest query-against-a-union-of-multiple-equality-criteria
+  (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.age = ?)"
+          "John"
+          25]
+         (sql/->query [:or
+                       {:user/first-name "John"}
+                       {:user/age 25}]))))
+
 ; (deftest apply-union-of-equality-values-for-a-single-field
 ;   (is (= {:where [:or
 ;                   [:= :name nil]
