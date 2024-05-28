@@ -76,7 +76,7 @@
 
 (deftest query-against-comparison-operators
   (is (= ["SELECT users.* FROM users WHERE (users.age >= ?) AND (users.age < ?)"
-          1 
+          1
           5]
          (sql/->query {:user/age [:and
                                   [:>= 1]
@@ -89,6 +89,29 @@
                       {:target :user
                        :relationships {#{:users :addresses}
                                        [:= :users.id :addresses.user_id]}}))))
+
+(deftest query-against-a-two-step-join
+  (is (= ["SELECT users.* FROM users INNER JOIN orders ON users.id = orders.user_id INNER JOIN line_items on orders.id = line_items.order_id WHERE orders.order_date = ? line_items.sku = ?"
+          "ABC123"]
+         (sql/->query {:line-item/sku "ABC123"
+                       :orders/order-date "2020-01-01"}
+                      {:target :user
+                       :relationships {#{:users :orders}
+                                       [:= :users.id :orders.user_id]
+
+                                       #{:orders :line_items}
+                                       [:= :orders.id :line_items.order_id]}}))))
+
+(deftest query-against-an-implicit-intermediate-join
+  (is (= ["SELECT users.* FROM users INNER JOIN orders ON users.id = orders.user_id INNER JOIN line_items on orders.id = line_items.order_id WHERE line_items.sku = ?"
+          "ABC123"]
+         (sql/->query {:line-item/sku "ABC123"}
+                      {:target :user
+                       :relationships {#{:users :orders}
+                                       [:= :users.id :orders.user_id]
+
+                                       #{:orders :line_items}
+                                       [:= :orders.id :line_items.order_id]}}))))
 
 ; TODO: Test with complex join where not every table joins to the target
 
@@ -110,7 +133,7 @@
 ;                   30
 ;                   2 3 4]]
 ;     (is (= expected actual))))
-; 
+;
 ; (deftest apply-criteria-with-a-complex-join
 ;   (let [actual (-> (h/select :settings.name :users.first_name)
 ;                    (h/from :settings)
@@ -126,14 +149,14 @@
 ;                   "Doe"]]
 ;     (is (= expected actual)
 ;         "A complex join is mapped correctly.")))
-; 
+;
 ; (deftest apply-criteria-to-array-field
 ;   (is (= ["SELECT * FROM orders WHERE ? && tags" "'{\"rush\",\"preferred\"}'"]
 ;          (-> (h/select :*)
 ;              (h/from :orders)
 ;              (sql/apply-criteria {:order/tags [:&& #{:rush :preferred}]})
 ;              hsql/format))))
-; 
+;
 ; (deftest an-existing-join-is-not-duplicated
 ;   (is (= ["SELECT * FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
 ;          (-> (h/select :*)
@@ -168,7 +191,7 @@
 ;                                                                   :foreign-id :user_id}})
 ;              hsql/format))
 ;       "An right join is not duplicated"))
-; 
+;
 ; (deftest apply-criteria-with-sub-query
 ;   (let [subquery (-> (h/select :organization_id)
 ;                      (h/from :memberships)
@@ -182,7 +205,7 @@
 ;     (when-not (= expected actual)
 ;       (pprint (diff expected actual)))
 ;     (is (= expected actual))))
-; 
+;
 ; (deftest apply-criteria-with-join-on-compound-key
 ;   (let [actual (-> (h/select :transactions.*)
 ;                    (h/from :transactions)
@@ -203,15 +226,15 @@
 ;                      "WHERE attachments.id = ?"])
 ;                   101]]
 ;     (is (= expected actual))))
-; 
+;
 ; (deftest test-for-deeply-contained-key
 ;   (is (sql/deep-contains? {:one 1} :one))
 ;   (is (sql/deep-contains? [:and {:one 1}] :one)))
-; 
+;
 ; (deftest find-deeply-contained-value
 ;   (is (= 1 (sql/deep-get {:one 1} :one)))
 ;   (is (= 1 (sql/deep-get [:and {:one 1}] :one))))
-; 
+;
 ; (deftest deeply-dissoc-a-value
 ;   (is (= {:first-name "John"}
 ;          (sql/deep-dissoc {:first-name "John"
@@ -224,7 +247,7 @@
 ;                            {:last-name "Doe"}]
 ;                           :last-name))
 ;       "A redundant clause is removed"))
-; 
+;
 ; (deftest update-a-value-if-it-exists
 ;   (is (= {:age 26}
 ;          (sql/update-in-if {:age 25} [:age] inc))
@@ -232,7 +255,7 @@
 ;   (is (= {}
 ;          (sql/update-in-if {} [:age] inc))
 ;       "The value is not added if it is not present"))
-; 
+;
 ; (deftest update-a-vlaue-in-a-criteria-if-it-exists
 ;   (is (= {:age 26
 ;           :size "large"}
@@ -246,7 +269,7 @@
 ;                            [:age]
 ;                            inc))
 ;       "The value is not added if it is not present"))
-; 
+;
 ; (deftest query-against-a-point
 ;   (is (= ["SELECT * FROM locations WHERE ? @> center", (geo/->Circle (geo/->Point 2 2) 3)]
 ;          (-> (h/select :*)
