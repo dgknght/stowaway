@@ -5,8 +5,7 @@
             [stowaway.sql :as sql]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
-            [camel-snake-kebab.core :refer [->snake_case]]
-            [clojure.pprint :as pp]))
+            [camel-snake-kebab.core :refer [->snake_case]]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -157,21 +156,33 @@
     (when (= 1 (count ns))
       (first ns))))
 
+(defn- fetch-relationships
+  [{:keys [table relationships]
+    :or {relationships {}}}
+   tables]
+  (->> tables
+       (remove #(= table %))
+       (map (comp (fn [[rel-key join-exp]]
+                    [(first (disj rel-key table))
+                     join-exp])
+                  (juxt identity relationships)
+                  (fn [t] #{table t})))))
+
 (defn ->joins
-  [criteria {:keys [table relationships]
-             :or {relationships {}}
-             :as opts}]
-  (let [tables (map (comp #(model->table % opts)
-                          keyword)
-                    (namespaces criteria))]
-    (when (seq tables)
-      (->> tables
-           (remove #(= table %))
-           (mapcat (comp (fn [[rel-key join-exp]]
-                           [(first (disj rel-key table))
-                            join-exp])
-                         (juxt identity relationships)
-                         (fn [t] #{table t})))))))
+  [criteria opts]
+  (->> (namespaces criteria)
+       (map (comp #(model->table % opts)
+                  keyword))
+       (fetch-relationships opts)
+       (mapcat identity))
+  ; mapcat is used for this reason:
+  ; these are coming back like
+  ;   [[:table-y [:= :table-x.id :table-y.other_id]]
+  ;    [:table-z [:= :table-y.id :table-z.other_id]]]
+  ; we want to return them like
+  ;   [:table-y [:= :table-x.id :table-y.other_id]
+  ;    :table-z [:= :table-y.id :table-z.other_id]]
+  )
 
 (defn- join
   [sql joins]
