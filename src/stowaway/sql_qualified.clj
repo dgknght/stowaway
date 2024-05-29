@@ -114,7 +114,7 @@
        [:< k v2]]
 
       :in
-      [[:in k values]]
+      [(apply vector :in k values)]
 
       (:and :or)
       [(apply vector oper (->> values
@@ -131,7 +131,7 @@
       :&&
       [[oper (postgres-array v1) k]]
 
-      [[:in k values]]))
+      [(apply vector :in k values)]))
 
 (defmulti ^:private ->clauses
   (fn [criteria _opts]
@@ -181,12 +181,8 @@
     (when (= 1 (count ns))
       (first ns))))
 
-(defn rel-graph
-  [relationships]
-  (apply g/graph relationships))
-
 (defn- path-to-join
-  [path _relationships]
+  [path _relationships] ; we will want to support explicit join details
   (->> path
        (partition 2 1)
        (map (fn [[t1 t2]]
@@ -208,12 +204,11 @@
              (s/valid? ::relationships relationships))]}
 
   (when (seq relationships)
-    (let [graph (rel-graph relationships)]
+    (let [graph (apply g/graph relationships)]
       (->> (namespaces criteria)
            (map (comp #(shortest-path graph table %)
-                      #(model->table % opts)
+                      #(model->table-key % opts)
                       keyword))
-           ; a path for each table to join
            (sort-by count >)
            (reduce (fn [ps p]
                      (if (some #(= (take (count p) %)
@@ -224,6 +219,7 @@
                    [])
            ; redundant paths removed
            (mapcat #(path-to-join % relationships))
+           ; TODO: Dedupe here?
            (mapcat identity)))))
 
 (defn- join

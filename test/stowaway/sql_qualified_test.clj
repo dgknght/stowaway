@@ -108,27 +108,20 @@
                                         [:users :addresses]
                                         [:orders :line_items]}}))))
 
-; TODO: Test with complex join where not every table joins to the target
+(deftest apply-complex-criteria
+  (is (= ["SELECT users.* FROM users WHERE ((users.first_name = ?) OR (users.first_name = ?)) AND ((users.age >= ?) AND (users.age <= ?) AND (users.size IN (?, ?, ?)))"
+          "John"
+          "Jane"
+          20
+          30
+          2 3 4]
+         (sql/->query [:and
+                       [:or
+                        {:user/first-name "John"}
+                        {:user/first-name "Jane"}]
+                       {:user/age [:between 20 30]
+                        :user/size [:in '(2 3 4)]}]))))
 
-; (deftest apply-complex-criteria
-;   (let [actual (-> (h/select :first_name)
-;                    (h/from :users)
-;                    (sql/apply-criteria [:and
-;                                         [:or
-;                                          {:user/first-name "John"}
-;                                          {:user/first-name "Jane"}]
-;                                         {:user/age [:between 20 30]
-;                                          :user/size [:in '(2 3 4)]}]
-;                                        :target :user)
-;                    hsql/format)
-;         expected ["SELECT first_name FROM users WHERE ((first_name = ?) OR (first_name = ?)) AND ((age >= ?) AND (age <= ?) AND (size IN (?, ?, ?)))"
-;                   "John"
-;                   "Jane"
-;                   20
-;                   30
-;                   2 3 4]]
-;     (is (= expected actual))))
-;
 ; (deftest apply-criteria-with-a-complex-join
 ;   (let [actual (-> (h/select :settings.name :users.first_name)
 ;                    (h/from :settings)
