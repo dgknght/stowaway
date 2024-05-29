@@ -134,13 +134,10 @@
                                 [:= :users.id :settings.owner_id]
                                 [:= :settings.owner_type "user"]]}}))))
 
-; (deftest apply-criteria-to-array-field
-;   (is (= ["SELECT * FROM orders WHERE ? && tags" "'{\"rush\",\"preferred\"}'"]
-;          (-> (h/select :*)
-;              (h/from :orders)
-;              (sql/apply-criteria {:order/tags [:&& #{:rush :preferred}]})
-;              hsql/format))))
-;
+(deftest apply-criteria-to-array-field
+  (is (= ["SELECT orders.* FROM orders WHERE ? && orders.tags" "'{\"rush\",\"preferred\"}'"]
+         (sql/->query {:order/tags [:&& #{:rush :preferred}]}))))
+
 ; (deftest an-existing-join-is-not-duplicated
 ;   (is (= ["SELECT * FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
 ;          (-> (h/select :*)
