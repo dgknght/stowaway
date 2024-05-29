@@ -12,6 +12,7 @@
 
 (s/def ::relationship (s/tuple keyword? keyword?))
 (s/def ::relationships (s/coll-of ::relationship :min-count 1))
+(s/def ::joins (s/map-of ::relationship vector?))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -181,17 +182,28 @@
     (when (= 1 (count ns))
       (first ns))))
 
+(defn- ->join
+  [[t1 t2 :as edge] {:keys [joins]
+                    :or {joins {}}}]
+  {:pre [(or (nil? joins)
+             (s/valid? ::joins joins))]}
+  ; The edge contains the two tables in the relationship, but
+  ; not necessariy in the same order.
+  (or (joins edge)
+      (joins (reverse edge))
+      [:=
+       (keyword (str (name t1) ".id"))
+       (keyword (str (name t2)
+                     "."
+                     (singular (name t1))
+                     "_id"))]))
+
 (defn- path-to-join
-  [path _relationships] ; we will want to support explicit join details
+  [path opts]
   (->> path
        (partition 2 1)
-       (map (fn [[t1 t2]]
-              [t2 [:=
-                   (keyword (str (name t1) ".id"))
-                   (keyword (str (name t2)
-                                 "."
-                                 (singular (name t1))
-                                 "_id"))]]))))
+       (map (fn [[_ t2 :as rel]]
+              [t2 (->join rel opts)]))))
 
 (defn- shortest-path
   [graph from to]
@@ -218,7 +230,7 @@
                        (conj ps p)))
                    [])
            ; redundant paths removed
-           (mapcat #(path-to-join % relationships))
+           (mapcat #(path-to-join % opts))
            ; TODO: Dedupe here?
            (mapcat identity)))))
 

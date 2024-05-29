@@ -122,22 +122,18 @@
                        {:user/age [:between 20 30]
                         :user/size [:in '(2 3 4)]}]))))
 
-; (deftest apply-criteria-with-a-complex-join
-;   (let [actual (-> (h/select :settings.name :users.first_name)
-;                    (h/from :settings)
-;                    (sql/apply-criteria {:user/last-name "Doe"}
-;                                        :target :setting
-;                                        :relationships {#{:setting :user} {:primary-table :users
-;                                                                           :foreign-table :settings
-;                                                                           :foreign-id    :owner-id
-;                                                                           :constraints   [[:= :settings.owner_id "user"]]}})
-;                    hsql/format)
-;         expected ["SELECT settings.name, users.first_name FROM settings INNER JOIN users ON (users.id = settings.owner_id) AND (settings.owner_id = ?) WHERE users.last_name = ?"
-;                   "user"
-;                   "Doe"]]
-;     (is (= expected actual)
-;         "A complex join is mapped correctly.")))
-;
+(deftest apply-criteria-with-explicit-join-expression
+  (is (= ["SELECT settings.* FROM settings INNER JOIN users ON (users.id = settings.owner_id) AND (settings.owner_type = ?) WHERE users.last_name = ?"
+          "user"
+          "Doe"]
+         (sql/->query {:user/last-name "Doe"}
+                      {:target :setting
+                       :relationships #{[:users :settings]}
+                       :joins {[:users :settings]
+                               [:and
+                                [:= :users.id :settings.owner_id]
+                                [:= :settings.owner_type "user"]]}}))))
+
 ; (deftest apply-criteria-to-array-field
 ;   (is (= ["SELECT * FROM orders WHERE ? && tags" "'{\"rush\",\"preferred\"}'"]
 ;          (-> (h/select :*)
