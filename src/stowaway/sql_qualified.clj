@@ -2,10 +2,17 @@
   (:require [clojure.string :as str]
             [clojure.set :refer [union]]
             [clojure.pprint :refer [pprint]]
+            [clojure.spec.alpha :as s]
+            [ubergraph.core :as g]
+            [ubergraph.alg :refer [shortest-path
+                                   nodes-in-path]]
             [stowaway.sql :as sql]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
             [camel-snake-kebab.core :refer [->snake_case]]))
+
+(s/def ::relationship (s/tuple keyword? keyword?))
+(s/def ::relationships (s/coll-of ::relationship :min-count 1))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -16,6 +23,21 @@
 (def select-count sql/select-count)
 (def plural sql/plural)
 (def delimit sql/delimit)
+
+(defn- apply-word-rule
+  [word {:keys [pattern f]}]
+  (when-let [match (re-find pattern word)]
+    (f match)))
+
+(defn- singular
+  [word]
+  (some (partial apply-word-rule word)
+        [{:pattern #"(?i)\Achildren\z"
+          :f (constantly "child")}
+         {:pattern #"\A(.+)ies\z"
+          :f #(str (second %) "y")}
+         {:pattern #"\A(.+)s\z"
+          :f #(str (second %))}]))
 
 (defn- postgres-array
   [values]
@@ -28,7 +50,7 @@
   [m {:keys [table-names]
       :or {table-names {}}}]
   {:pre [(keyword? m)]}
-  (get-in table-names [m] (-> m name plural keyword)))
+  (get-in table-names [m] (-> m name plural ->snake_case keyword)))
 
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
@@ -156,33 +178,53 @@
     (when (= 1 (count ns))
       (first ns))))
 
-(defn- fetch-relationships
-  [{:keys [table relationships]
-    :or {relationships {}}}
-   tables]
-  (->> tables
-       (remove #(= table %))
-       (map (comp (fn [[rel-key join-exp]]
-                    [(first (disj rel-key table))
-                     join-exp])
-                  (juxt identity relationships)
-                  (fn [t] #{table t})))))
+(defn rel-graph
+  [relationships]
+  (apply g/graph relationships))
+
+(defn- path-to-join
+  [path _relationships]
+  (->> path
+       (partition 2 1)
+       (map (fn [[t1 t2]]
+              [t2 [:=
+                   (keyword (str (name t1) ".id"))
+                   (keyword (str (name t2)
+                                 "."
+                                 (singular (name t1))
+                                 "_id"))]]))))
 
 (defn ->joins
-  [criteria opts]
-  (->> (namespaces criteria)
-       (map (comp #(model->table % opts)
-                  keyword))
-       (fetch-relationships opts)
-       (mapcat identity))
-  ; mapcat is used for this reason:
-  ; these are coming back like
-  ;   [[:table-y [:= :table-x.id :table-y.other_id]]
-  ;    [:table-z [:= :table-y.id :table-z.other_id]]]
-  ; we want to return them like
-  ;   [:table-y [:= :table-x.id :table-y.other_id]
-  ;    :table-z [:= :table-y.id :table-z.other_id]]
-  )
+  [criteria {:keys [table relationships] :as opts}]
+  {:pre [(or (nil? relationships)
+             (s/valid? ::relationships relationships))]}
+
+  (when (seq relationships)
+    (let [graph (rel-graph relationships)
+          tables (map (comp #(model->table % opts)
+                            keyword)
+                      (namespaces criteria))
+          paths (map (comp nodes-in-path
+                           #(shortest-path graph table %)) tables)
+          nonres (->> paths
+                      (sort-by count)
+                      reverse
+                      (reduce (fn [ps p]
+                                (if (some #(= (take (count p) %)
+                                              p)
+                                          ps)
+                                  ps
+                                  (conj ps p)))
+                              []))
+          joins (->> nonres
+                     (mapcat #(path-to-join % relationships))
+                     (mapcat identity))]
+      #_(pprint {::tables tables
+               ::paths paths
+               ::nonres nonres
+               ::joins joins})
+
+      joins)))
 
 (defn- join
   [sql joins]

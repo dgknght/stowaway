@@ -6,5 +6,8 @@
   :dependencies [[org.clojure/clojure "1.10.0"]
                  [org.clojure/tools.logging "1.0.0"]
                  [camel-snake-kebab "0.4.1"]
-                 [com.github.seancorfield/honeysql "2.0.0-rc3"]]
+                 [com.github.seancorfield/honeysql "2.0.0-rc3"]
+                 [ubergraph "0.9.0" :exclusions [org.clojure/spec.alpha
+                                                 org.clojure/clojure
+                                                 org.clojure/core.specs.alpha]]]
   :repl-options {:init-ns stowaway.core})

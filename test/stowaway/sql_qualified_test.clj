@@ -87,31 +87,26 @@
           "Dallas"]
          (sql/->query {:address/city "Dallas"}
                       {:target :user
-                       :relationships {#{:users :addresses}
-                                       [:= :users.id :addresses.user_id]}}))))
+                       :relationships #{[:users :addresses]}}))))
 
 (deftest query-against-a-two-step-join
-  (is (= ["SELECT users.* FROM users INNER JOIN orders ON users.id = orders.user_id INNER JOIN line_items on orders.id = line_items.order_id WHERE orders.order_date = ? line_items.sku = ?"
-          "ABC123"]
+  (is (= ["SELECT users.* FROM users INNER JOIN orders ON users.id = orders.user_id INNER JOIN line_items ON orders.id = line_items.order_id WHERE (line_items.sku = ?) AND (orders.order_date = ?)"
+          "ABC123"
+          "2020-01-01"]
          (sql/->query {:line-item/sku "ABC123"
-                       :orders/order-date "2020-01-01"}
+                       :order/order-date "2020-01-01"}
                       {:target :user
-                       :relationships {#{:users :orders}
-                                       [:= :users.id :orders.user_id]
-
-                                       #{:orders :line_items}
-                                       [:= :orders.id :line_items.order_id]}}))))
+                       :relationships #{[:users :orders]
+                                        [:orders :line_items]}}))))
 
 (deftest query-against-an-implicit-intermediate-join
-  (is (= ["SELECT users.* FROM users INNER JOIN orders ON users.id = orders.user_id INNER JOIN line_items on orders.id = line_items.order_id WHERE line_items.sku = ?"
+  (is (= ["SELECT users.* FROM users INNER JOIN orders ON users.id = orders.user_id INNER JOIN line_items ON orders.id = line_items.order_id WHERE line_items.sku = ?"
           "ABC123"]
          (sql/->query {:line-item/sku "ABC123"}
                       {:target :user
-                       :relationships {#{:users :orders}
-                                       [:= :users.id :orders.user_id]
-
-                                       #{:orders :line_items}
-                                       [:= :orders.id :line_items.order_id]}}))))
+                       :relationships #{[:users :orders]
+                                        [:users :addresses]
+                                        [:orders :line_items]}}))))
 
 ; TODO: Test with complex join where not every table joins to the target
 
