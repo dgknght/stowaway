@@ -138,123 +138,92 @@
   (is (= ["SELECT orders.* FROM orders WHERE ? && orders.tags" "'{\"rush\",\"preferred\"}'"]
          (sql/->query {:order/tags [:&& #{:rush :preferred}]}))))
 
-; (deftest an-existing-join-is-not-duplicated
-;   (is (= ["SELECT * FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
-;          (-> (h/select :*)
-;              (h/from :orders)
-;              (h/join :users [:= :users.id :orders.user_id])
-;              (sql/apply-criteria {:user/first-name "Doug"}
-;                                  :target :order
-;                                  :relationships {#{:order :user} {:primary-table :users
-;                                                                   :foreign-table :orders
-;                                                                   :foreign-id :user_id}})
-;              hsql/format))
-;       "An inner join is not duplicated")
-;   (is (= ["SELECT * FROM orders LEFT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
-;          (-> (h/select :*)
-;              (h/from :orders)
-;              (h/left-join :users [:= :users.id :orders.user_id])
-;              (sql/apply-criteria {:user/first-name "Doug"}
-;                                  :target :order
-;                                  :relationships {#{:order :user} {:primary-table :users
-;                                                                   :foreign-table :orders
-;                                                                   :foreign-id :user_id}})
-;              hsql/format))
-;       "An left join is not duplicated")
-;   (is (= ["SELECT * FROM orders RIGHT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
-;          (-> (h/select :*)
-;              (h/from :orders)
-;              (h/right-join :users [:= :users.id :orders.user_id])
-;              (sql/apply-criteria {:user/first-name "Doug"}
-;                                  :target :order
-;                                  :relationships {#{:order :user} {:primary-table :users
-;                                                                   :foreign-table :orders
-;                                                                   :foreign-id :user_id}})
-;              hsql/format))
-;       "An right join is not duplicated"))
-;
-; (deftest apply-criteria-with-sub-query
-;   (let [subquery (-> (h/select :organization_id)
-;                      (h/from :memberships)
-;                      (h/where [:= :user_id 123]))
-;         actual (-> (h/select :*)
-;                    (h/from :organizations)
-;                    (sql/apply-criteria {:id [:in subquery]})
-;                    hsql/format)
-;         expected ["SELECT * FROM organizations WHERE id IN (SELECT organization_id FROM memberships WHERE user_id = ?)"
-;                   123]]
-;     (when-not (= expected actual)
-;       (pprint (diff expected actual)))
-;     (is (= expected actual))))
-;
-; (deftest apply-criteria-with-join-on-compound-key
-;   (let [actual (-> (h/select :transactions.*)
-;                    (h/from :transactions)
-;                    (sql/apply-criteria {:attachmeht/id 101}
-;                                        :target :transaction
-;                                        :relationships {#{:transaction :attachment} {:primary-table :transactions
-;                                                                                     :foreign-table :attachments
-;                                                                                     :primary-id [:transaction_date :id]
-;                                                                                     :foreign-id [:transaction_date :transaction_id]}})
-;                    hsql/format)
-;         expected [(string/join
-;                     " "
-;                     ["SELECT transactions.*"
-;                      "FROM transactions"
-;                      "INNER JOIN attachments"
-;                      "ON (transactions.transaction_date = attachments.transaction_date)"
-;                      "AND (transactions.id = attachments.transaction_id)"
-;                      "WHERE attachments.id = ?"])
-;                   101]]
-;     (is (= expected actual))))
-;
-; (deftest test-for-deeply-contained-key
-;   (is (sql/deep-contains? {:one 1} :one))
-;   (is (sql/deep-contains? [:and {:one 1}] :one)))
-;
-; (deftest find-deeply-contained-value
-;   (is (= 1 (sql/deep-get {:one 1} :one)))
-;   (is (= 1 (sql/deep-get [:and {:one 1}] :one))))
-;
-; (deftest deeply-dissoc-a-value
-;   (is (= {:first-name "John"}
-;          (sql/deep-dissoc {:first-name "John"
-;                            :last-name "Doe"}
-;                           :last-name))
-;       "A map is treated like dissoc")
-;   (is (= {:first-name "John"}
-;          (sql/deep-dissoc [:or
-;                            {:first-name "John"}
-;                            {:last-name "Doe"}]
-;                           :last-name))
-;       "A redundant clause is removed"))
-;
-; (deftest update-a-value-if-it-exists
-;   (is (= {:age 26}
-;          (sql/update-in-if {:age 25} [:age] inc))
-;       "The value is updated if it is present")
-;   (is (= {}
-;          (sql/update-in-if {} [:age] inc))
-;       "The value is not added if it is not present"))
-;
-; (deftest update-a-vlaue-in-a-criteria-if-it-exists
-;   (is (= {:age 26
-;           :size "large"}
-;          (sql/update-in-if {:age 25
-;                             :size "large"}
-;                            [:age]
-;                            inc))
-;       "The value is updated if it is present")
-;   (is (= [:or {:color "blue"} {:size "large"}]
-;          (sql/update-in-if [:or {:color "blue"} {:size "large"}]
-;                            [:age]
-;                            inc))
-;       "The value is not added if it is not present"))
-;
-; (deftest query-against-a-point
-;   (is (= ["SELECT * FROM locations WHERE ? @> center", (geo/->Circle (geo/->Point 2 2) 3)]
-;          (-> (h/select :*)
-;              (h/from :locations)
-;              (sql/apply-criteria {:location/center [:contained-by :?geoloc]})
-;              (hsql/format {:params {:geoloc (geo/->Circle (geo/->Point 2 2) 3)}})))
-;       ":contained-by is translated to @>"))
+#_(deftest specify-an-outer-join
+  (is (= ["SELECT orders.* FROM orders LEFT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
+         (sql/->query {:user/first-name "Doug"}
+                      {:target :order
+                       :join-hints {:order :all}
+                       :relationships #{[:user :order]}}))))
+
+#_(deftest apply-criteria-with-sub-query
+  (let [subquery (-> (h/select :organization_id)
+                     (h/from :memberships)
+                     (h/where [:= :user_id 123]))
+        actual (-> (h/select :*)
+                   (h/from :organizations)
+                   (sql/apply-criteria {:id [:in subquery]})
+                   hsql/format)
+        expected ["SELECT * FROM organizations WHERE id IN (SELECT organization_id FROM memberships WHERE user_id = ?)"
+                  123]]
+    (when-not (= expected actual)
+      (pprint (diff expected actual)))
+    (is (= expected actual))))
+
+#_(deftest apply-criteria-with-join-on-compound-key
+  (let [actual (-> (h/select :transactions.*)
+                   (h/from :transactions)
+                   (sql/apply-criteria {:attachmeht/id 101}
+                                       :target :transaction
+                                       :relationships {#{:transaction :attachment} {:primary-table :transactions
+                                                                                    :foreign-table :attachments
+                                                                                    :primary-id [:transaction_date :id]
+                                                                                    :foreign-id [:transaction_date :transaction_id]}})
+                   hsql/format)
+        expected [(string/join
+                    " "
+                    ["SELECT transactions.*"
+                     "FROM transactions"
+                     "INNER JOIN attachments"
+                     "ON (transactions.transaction_date = attachments.transaction_date)"
+                     "AND (transactions.id = attachments.transaction_id)"
+                     "WHERE attachments.id = ?"])
+                  101]]
+    (is (= expected actual))))
+
+#_(deftest test-for-deeply-contained-key
+  (is (sql/deep-contains? {:one 1} :one))
+  (is (sql/deep-contains? [:and {:one 1}] :one)))
+
+#_(deftest find-deeply-contained-value
+  (is (= 1 (sql/deep-get {:one 1} :one)))
+  (is (= 1 (sql/deep-get [:and {:one 1}] :one))))
+
+#_(deftest deeply-dissoc-a-value
+  (is (= {:first-name "John"}
+         (sql/deep-dissoc {:first-name "John"
+                           :last-name "Doe"}
+                          :last-name))
+      "A map is treated like dissoc")
+  (is (= {:first-name "John"}
+         (sql/deep-dissoc [:or
+                           {:first-name "John"}
+                           {:last-name "Doe"}]
+                          :last-name))
+      "A redundant clause is removed"))
+
+#_(deftest update-a-value-if-it-exists
+  (is (= {:age 26}
+         (sql/update-in-if {:age 25} [:age] inc))
+      "The value is updated if it is present")
+  (is (= {}
+         (sql/update-in-if {} [:age] inc))
+      "The value is not added if it is not present"))
+
+#_(deftest update-a-vlaue-in-a-criteria-if-it-exists
+  (is (= {:age 26
+          :size "large"}
+         (sql/update-in-if {:age 25
+                            :size "large"}
+                           [:age]
+                           inc))
+      "The value is updated if it is present")
+  (is (= [:or {:color "blue"} {:size "large"}]
+         (sql/update-in-if [:or {:color "blue"} {:size "large"}]
+                           [:age]
+                           inc))
+      "The value is not added if it is not present"))
+
+(deftest query-against-a-point
+  (is (= ["SELECT locations.* FROM locations WHERE ? @> locations.center" (geo/->Circle (geo/->Point 2 2) 3)]
+         (sql/->query {:location/center [:contained-by :?geoloc]}
+                      {:named-params {:geoloc (geo/->Circle (geo/->Point 2 2) 3)}}))))

@@ -241,7 +241,7 @@
     sql))
 
 (defn ->query
-  [criteria & [{:keys [target] :as opts}]]
+  [criteria & [{:keys [target named-params] :as opts}]]
   (let [target (or target
                    (keyword (single-ns criteria))
                    (throw (IllegalArgumentException. "No target specified.")))
@@ -254,4 +254,4 @@
         (apply-limit opts)
         (apply-offset opts)
         (select-count opts)
-        (hsql/format))))
+        (hsql/format {:params named-params}))))
