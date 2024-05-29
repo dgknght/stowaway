@@ -4,8 +4,7 @@
             [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
             [ubergraph.core :as g]
-            [ubergraph.alg :refer [shortest-path
-                                   nodes-in-path]]
+            [ubergraph.alg :as ga]
             [stowaway.sql :as sql]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
@@ -51,6 +50,10 @@
       :or {table-names {}}}]
   {:pre [(keyword? m)]}
   (get-in table-names [m] (-> m name plural ->snake_case keyword)))
+
+(defn- model->table-key
+  [m opts]
+  (keyword (model->table m opts)))
 
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
@@ -194,37 +197,34 @@
                                  (singular (name t1))
                                  "_id"))]]))))
 
+(defn- shortest-path
+  [graph from to]
+  (ga/nodes-in-path
+    (ga/shortest-path graph from to)))
+
 (defn ->joins
   [criteria {:keys [table relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
 
   (when (seq relationships)
-    (let [graph (rel-graph relationships)
-          tables (map (comp #(model->table % opts)
-                            keyword)
-                      (namespaces criteria))
-          paths (map (comp nodes-in-path
-                           #(shortest-path graph table %)) tables)
-          nonres (->> paths
-                      (sort-by count)
-                      reverse
-                      (reduce (fn [ps p]
-                                (if (some #(= (take (count p) %)
-                                              p)
-                                          ps)
-                                  ps
-                                  (conj ps p)))
-                              []))
-          joins (->> nonres
-                     (mapcat #(path-to-join % relationships))
-                     (mapcat identity))]
-      #_(pprint {::tables tables
-               ::paths paths
-               ::nonres nonres
-               ::joins joins})
-
-      joins)))
+    (let [graph (rel-graph relationships)]
+      (->> (namespaces criteria)
+           (map (comp #(shortest-path graph table %)
+                      #(model->table % opts)
+                      keyword))
+           ; a path for each table to join
+           (sort-by count >)
+           (reduce (fn [ps p]
+                     (if (some #(= (take (count p) %)
+                                   p)
+                               ps)
+                       ps
+                       (conj ps p)))
+                   [])
+           ; redundant paths removed
+           (mapcat #(path-to-join % relationships))
+           (mapcat identity)))))
 
 (defn- join
   [sql joins]
