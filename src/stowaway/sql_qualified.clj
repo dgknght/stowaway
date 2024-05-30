@@ -182,21 +182,27 @@
     (when (= 1 (count ns))
       (first ns))))
 
+(defn- k-join
+  [& vs]
+  (keyword
+    (->> vs
+         (map #(if (keyword? %)
+                 (name %)
+                 %))
+         (str/join))))
+
 (defn- ->join
   [[t1 t2 :as edge] {:keys [joins]
                     :or {joins {}}}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
   ; The edge contains the two tables in the relationship, but
-  ; not necessariy in the same order.
+  ; not necessarily in the same order.
   (or (joins edge)
       (joins (reverse edge))
       [:=
-       (keyword (str (name t1) ".id"))
-       (keyword (str (name t2)
-                     "."
-                     (singular (name t1))
-                     "_id"))]))
+       (k-join t1 ".id")
+       (k-join t2 "." (-> t1 name singular) "_id") ]))
 
 (defn- path-to-join
   [path opts]
@@ -210,29 +216,37 @@
   (ga/nodes-in-path
     (ga/shortest-path graph from to)))
 
+(defn- starts-with?
+  [p1 p2]
+  (= (take (count p2) p1)
+     p2))
+
+(defn- drop-duplicative
+  [ps p]
+  (if (some #(starts-with? % p)
+            ps)
+    ps
+    (conj ps p)))
+
+(defn- shortest-path-fn
+  [from {:keys [relationships] :as opts}]
+  (let [graph (apply g/graph relationships)]
+    (comp #(shortest-path graph from %)
+          #(model->table-key % opts)
+          keyword)))
+
 (defn ->joins
   [criteria {:keys [table relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
-
   (when (seq relationships)
-    (let [graph (apply g/graph relationships)]
-      (->> (namespaces criteria)
-           (map (comp #(shortest-path graph table %)
-                      #(model->table-key % opts)
-                      keyword))
-           (sort-by count >)
-           (reduce (fn [ps p]
-                     (if (some #(= (take (count p) %)
-                                   p)
-                               ps)
-                       ps
-                       (conj ps p)))
-                   [])
-           ; redundant paths removed
-           (mapcat #(path-to-join % opts))
-           ; TODO: Dedupe here?
-           (mapcat identity)))))
+    (->> (namespaces criteria)
+         (map (shortest-path-fn table opts))
+         (sort-by count >)
+         (reduce drop-duplicative [])
+         (mapcat #(path-to-join % opts))
+         ; TODO: Dedupe here?
+         (mapcat identity))))
 
 (defn- join
   [sql joins]
