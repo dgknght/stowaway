@@ -68,6 +68,15 @@
                   (map ->snake_case)
                   (str/join ".")))))
 
+(defn- select-custom
+  [sql {:keys [select] :as opts}]
+  (if (seq select)
+    (let [cols (map #(->col-ref % opts) select)]
+      (-> sql
+          (dissoc :select)
+          (assoc :select cols)))
+    sql))
+
 (defn- normalize-sort-spec
   [sort-spec]
   (if (vector? sort-spec)
@@ -83,9 +92,17 @@
                                sort))
     sql))
 
+(defn- subquery?
+  [expr]
+  (and (vector? expr)
+       (= :in (first expr))
+       (list? (second expr))))
+
 (defmulti ^:private map-entry->statements
   (fn [[_k v]]
-    (type v)))
+    (if (subquery? v)
+      ::subquery
+      (type v))))
 
 (defmethod map-entry->statements :default
   [[k v]]
@@ -133,6 +150,12 @@
       [[oper (postgres-array v1) k]]
 
       [(apply vector :in k values)]))
+
+(declare ->query)
+
+(defmethod map-entry->statements ::subquery
+  [[k [_ [criteria opts]]]]
+  [[:in k (->query criteria (assoc opts :skip-format? true))]])
 
 (defmulti ^:private ->clauses
   (fn [criteria _opts]
@@ -255,17 +278,21 @@
     sql))
 
 (defn ->query
-  [criteria & [{:keys [target named-params] :as opts}]]
+  [criteria & [{:keys [target named-params skip-format?] :as opts}]]
   (let [target (or target
                    (keyword (single-ns criteria))
                    (throw (IllegalArgumentException. "No target specified.")))
-        table (model->table target opts)]
-    (-> (h/select (keyword (str (name table) ".*")))
+        table (model->table target opts)
+        fmt (if skip-format?
+              identity
+              #(hsql/format % {:params named-params}))]
+    (-> (h/select (k-join table ".*"))
         (h/from table)
         (h/where (->where criteria opts))
         (join (->joins criteria (assoc opts :table table)))
         (apply-sort opts)
         (apply-limit opts)
         (apply-offset opts)
+        (select-custom opts)
         (select-count opts)
-        (hsql/format {:params named-params}))))
+        fmt)))

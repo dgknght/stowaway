@@ -114,13 +114,13 @@
           "Jane"
           20
           30
-          2 3 4]
+          4 3 2]
          (sql/->query [:and
                        [:or
                         {:user/first-name "John"}
                         {:user/first-name "Jane"}]
                        {:user/age [:between 20 30]
-                        :user/size [:in '(2 3 4)]}]))))
+                        :user/size [:in #{2 3 4}]}]))))
 
 (deftest apply-criteria-with-explicit-join-expression
   (is (= ["SELECT settings.* FROM settings INNER JOIN users ON (users.id = settings.owner_id) AND (settings.owner_type = ?) WHERE users.last_name = ?"
@@ -145,19 +145,16 @@
                        :join-hints {:order :all}
                        :relationships #{[:user :order]}}))))
 
-#_(deftest apply-criteria-with-sub-query
-  (let [subquery (-> (h/select :organization_id)
-                     (h/from :memberships)
-                     (h/where [:= :user_id 123]))
-        actual (-> (h/select :*)
-                   (h/from :organizations)
-                   (sql/apply-criteria {:id [:in subquery]})
-                   hsql/format)
-        expected ["SELECT * FROM organizations WHERE id IN (SELECT organization_id FROM memberships WHERE user_id = ?)"
-                  123]]
-    (when-not (= expected actual)
-      (pprint (diff expected actual)))
-    (is (= expected actual))))
+(deftest apply-criteria-with-sub-query
+  (is (= [(string/join
+            " "
+            ["SELECT organizations.*"
+             "FROM organizations"
+             "WHERE organizations.id IN"
+             "(SELECT memberships.organization_id FROM memberships WHERE memberships.user_id = ?)"])
+          123]
+         (sql/->query {:organization/id [:in '({:membership/user_id 123}
+                                               {:select [:membership/organization-id]})]}))))
 
 (deftest apply-criteria-with-join-on-compound-key
   (is (= [(string/join
