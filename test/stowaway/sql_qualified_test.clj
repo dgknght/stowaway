@@ -159,69 +159,23 @@
       (pprint (diff expected actual)))
     (is (= expected actual))))
 
-#_(deftest apply-criteria-with-join-on-compound-key
-  (let [actual (-> (h/select :transactions.*)
-                   (h/from :transactions)
-                   (sql/apply-criteria {:attachmeht/id 101}
-                                       :target :transaction
-                                       :relationships {#{:transaction :attachment} {:primary-table :transactions
-                                                                                    :foreign-table :attachments
-                                                                                    :primary-id [:transaction_date :id]
-                                                                                    :foreign-id [:transaction_date :transaction_id]}})
-                   hsql/format)
-        expected [(string/join
-                    " "
-                    ["SELECT transactions.*"
-                     "FROM transactions"
-                     "INNER JOIN attachments"
-                     "ON (transactions.transaction_date = attachments.transaction_date)"
-                     "AND (transactions.id = attachments.transaction_id)"
-                     "WHERE attachments.id = ?"])
-                  101]]
-    (is (= expected actual))))
-
-#_(deftest test-for-deeply-contained-key
-  (is (sql/deep-contains? {:one 1} :one))
-  (is (sql/deep-contains? [:and {:one 1}] :one)))
-
-#_(deftest find-deeply-contained-value
-  (is (= 1 (sql/deep-get {:one 1} :one)))
-  (is (= 1 (sql/deep-get [:and {:one 1}] :one))))
-
-#_(deftest deeply-dissoc-a-value
-  (is (= {:first-name "John"}
-         (sql/deep-dissoc {:first-name "John"
-                           :last-name "Doe"}
-                          :last-name))
-      "A map is treated like dissoc")
-  (is (= {:first-name "John"}
-         (sql/deep-dissoc [:or
-                           {:first-name "John"}
-                           {:last-name "Doe"}]
-                          :last-name))
-      "A redundant clause is removed"))
-
-#_(deftest update-a-value-if-it-exists
-  (is (= {:age 26}
-         (sql/update-in-if {:age 25} [:age] inc))
-      "The value is updated if it is present")
-  (is (= {}
-         (sql/update-in-if {} [:age] inc))
-      "The value is not added if it is not present"))
-
-#_(deftest update-a-vlaue-in-a-criteria-if-it-exists
-  (is (= {:age 26
-          :size "large"}
-         (sql/update-in-if {:age 25
-                            :size "large"}
-                           [:age]
-                           inc))
-      "The value is updated if it is present")
-  (is (= [:or {:color "blue"} {:size "large"}]
-         (sql/update-in-if [:or {:color "blue"} {:size "large"}]
-                           [:age]
-                           inc))
-      "The value is not added if it is not present"))
+(deftest apply-criteria-with-join-on-compound-key
+  (is (= [(string/join
+            " "
+            ["SELECT transactions.*"
+             "FROM transactions"
+             "INNER JOIN attachments"
+             "ON (transactions.id = attachments.transaction_id)"
+             "AND (transactions.transaction_date = attachments.transaction_date)"
+             "WHERE attachments.id = ?"])
+          101]
+         (sql/->query {:attachment/id 101}
+                      {:target :transaction
+                       :relationships #{[:transactions :attachments]}
+                       :joins {[:transactions :attachments]
+                               [:and
+                                [:= :transactions.id :attachments.transaction_id]
+                                [:= :transactions.transaction_date :attachments.transaction_date]]}}))))
 
 (deftest query-against-a-point
   (is (= ["SELECT locations.* FROM locations WHERE ? @> locations.center" (geo/->Circle (geo/->Point 2 2) 3)]
