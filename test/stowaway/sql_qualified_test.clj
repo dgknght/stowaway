@@ -138,12 +138,17 @@
   (is (= ["SELECT orders.* FROM orders WHERE ? && orders.tags" "'{\"rush\",\"preferred\"}'"]
          (sql/->query {:order/tags [:&& #{:rush :preferred}]}))))
 
-#_(deftest specify-an-outer-join
-  (is (= ["SELECT orders.* FROM orders LEFT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?" "Doug"]
+(deftest specify-an-outer-join
+  (is (= [(string/join
+            " "
+            ["SELECT orders.*"
+             "FROM orders"
+             "LEFT JOIN users ON users.id = orders.user_id WHERE users.first_name = ?"])
+          "Doug"]
          (sql/->query {:user/first-name "Doug"}
                       {:target :order
-                       :join-hints {:order :all}
-                       :relationships #{[:user :order]}}))))
+                       :full-results #{:order}
+                       :relationships #{[:users :orders]}}))))
 
 (deftest apply-criteria-with-sub-query
   (is (= [(string/join

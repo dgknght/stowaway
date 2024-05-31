@@ -214,25 +214,44 @@
                  %))
          (str/join))))
 
+(defn- find-relationship
+  "Give two table names in any order, return the relationship
+  which contains them in primary first, foreign second order."
+  [edge {:keys [relationships]}]
+  (some relationships [edge (reverse edge)]))
+
 (defn- ->join
-  [[t1 t2 :as edge] {:keys [joins]
-                    :or {joins {}}}]
+  "Given an edge (two tables in any order), return the honeysql join clause."
+  [edge {:keys [joins]
+         :or {joins {}}
+         :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
-  ; The edge contains the two tables in the relationship, but
-  ; not necessarily in the same order.
-  (or (joins edge)
-      (joins (reverse edge))
-      [:=
-       (k-join t1 ".id")
-       (k-join t2 "." (-> t1 name singular) "_id") ]))
+  (let [[t1 t2 :as rel] (find-relationship edge opts)]
+    (or (joins rel)
+        [:=
+         (k-join t1 ".id")
+         (k-join t2 "." (-> t1 name singular) "_id")])))
+
+(defn- join-type
+  [t1 t2 {:keys [full-results]}]
+  (if (full-results t1)
+    (if (full-results t2)
+      :outer
+      :left)
+    (if (full-results t2)
+      :right
+      :inner)))
 
 (defn- path-to-join
+  "Given a sequence of table names, return the join clauses necessary
+  to include all the tables in the query."
   [path opts]
   (->> path
        (partition 2 1)
-       (map (fn [[_ t2 :as rel]]
-              [t2 (->join rel opts)]))))
+       (map (fn [[t1 t2 :as rel]]
+              [(join-type t1 t2 opts)
+               [t2 (->join rel opts)]]))))
 
 (defn- shortest-path
   [graph from to]
@@ -259,6 +278,8 @@
           keyword)))
 
 (defn ->joins
+  "Given a criteria map, return a sequence of join clauses that
+  includes all tables in the criteria, plus the target table."
   [criteria {:keys [table relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
@@ -268,16 +289,22 @@
          (sort-by count >)
          (reduce drop-duplicative [])
          (mapcat #(path-to-join % opts))
-         ; TODO: Dedupe here?
-         (mapcat identity))))
+         (reduce (fn [res [join-type join]]
+                   (update-in res [join-type] (fnil into []) join))
+                 {}))))
 
 (defn- join
-  [sql joins]
-  (if (seq joins)
-    (assoc sql :join joins)
-    sql))
+  "Append left join, right join, full outer join, and inner
+  join clauses to a SQL map"
+  [sql {:keys [left right inner outer]}]
+  (cond-> sql
+    (seq left) (assoc :left-join left)
+    (seq right) (assoc :right-join right)
+    (seq outer) (assoc :outer-join outer)
+    (seq inner) (assoc :join inner)))
 
 (defn ->query
+  "Translate a criteria map into a SQL query"
   [criteria & [{:keys [target named-params skip-format?] :as opts}]]
   (let [target (or target
                    (keyword (single-ns criteria))
@@ -289,7 +316,14 @@
     (-> (h/select (k-join table ".*"))
         (h/from table)
         (h/where (->where criteria opts))
-        (join (->joins criteria (assoc opts :table table)))
+        (join (->joins criteria
+                       (-> opts
+                           (assoc :table table)
+                           (update-in [:full-results]
+                                      (fn [models]
+                                        (->> models
+                                             (map #(model->table-key % opts))
+                                             (into #{})))))))
         (apply-sort opts)
         (apply-limit opts)
         (apply-offset opts)
