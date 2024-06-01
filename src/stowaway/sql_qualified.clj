@@ -308,7 +308,7 @@
   [criteria & [{:keys [target named-params skip-format?] :as opts}]]
   (let [target (or target
                    (keyword (single-ns criteria))
-                   (throw (IllegalArgumentException. "No target specified.")))
+                   (throw (IllegalArgumentException. "Unable to determine the query target")))
         table (model->table target opts)
         fmt (if skip-format?
               identity
