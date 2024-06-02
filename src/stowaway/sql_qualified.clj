@@ -3,12 +3,11 @@
             [clojure.set :refer [union]]
             [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
-            [ubergraph.core :as g]
-            [ubergraph.alg :as ga]
-            [stowaway.sql :as sql]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
-            [camel-snake-kebab.core :refer [->snake_case]]))
+            [camel-snake-kebab.core :refer [->snake_case]]
+            [stowaway.graph :as g]
+            [stowaway.sql :as sql]))
 
 (s/def ::relationship (s/tuple keyword? keyword?))
 (s/def ::relationships (s/coll-of ::relationship :min-count 1))
@@ -253,29 +252,11 @@
               [(join-type t1 t2 opts)
                [t2 (->join rel opts)]]))))
 
-(defn- shortest-path
-  [graph from to]
-  (ga/nodes-in-path
-    (ga/shortest-path graph from to)))
-
-(defn- starts-with?
-  [p1 p2]
-  (= (take (count p2) p1)
-     p2))
-
-(defn- drop-duplicative
-  [ps p]
-  (if (some #(starts-with? % p)
-            ps)
-    ps
-    (conj ps p)))
-
-(defn- shortest-path-fn
-  [from {:keys [relationships] :as opts}]
-  (let [graph (apply g/graph relationships)]
-    (comp #(shortest-path graph from %)
-          #(model->table-key % opts)
-          keyword)))
+(defn- extract-tables
+  [criteria opts]
+  (map (comp #(model->table-key % opts)
+             keyword)
+       (namespaces criteria)))
 
 (defn ->joins
   "Given a criteria map, return a sequence of join clauses that
@@ -284,10 +265,9 @@
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
   (when (seq relationships)
-    (->> (namespaces criteria)
-         (map (shortest-path-fn table opts))
-         (sort-by count >)
-         (reduce drop-duplicative [])
+    (->> (g/shortest-paths table
+                           (extract-tables criteria opts)
+                           relationships)
          (mapcat #(path-to-join % opts))
          (reduce (fn [res [join-type join]]
                    (update-in res [join-type] (fnil into []) join))
