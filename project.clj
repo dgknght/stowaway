@@ -10,4 +10,5 @@
                  [ubergraph "0.9.0" :exclusions [org.clojure/spec.alpha
                                                  org.clojure/clojure
                                                  org.clojure/core.specs.alpha]]]
-  :repl-options {:init-ns stowaway.core})
+  :repl-options {:init-ns stowaway.core}
+  :repositories [["clojars" {:creds :gpg}]])
