@@ -1,12 +1,12 @@
 (ns stowaway.sql-qualified
   (:require [clojure.string :as str]
-            [clojure.set :refer [union]]
             [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
             [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.graph :as g]
+            [stowaway.criteria :refer [namespaces]]
             [stowaway.sql :as sql]))
 
 (s/def ::relationship (s/tuple keyword? keyword?))
@@ -180,21 +180,6 @@
     (if (= 1 (count clauses))
       (first clauses)
       (apply vector :and clauses))))
-
-(defmulti ^:private namespaces type)
-
-(defmethod namespaces ::map
-  [m]
-  (->> (keys m)
-       (map namespace)
-       (filter identity)
-       (into #{})))
-
-(defmethod namespaces ::vector
-  [[_oper & criterias]]
-  (->> criterias
-       (map namespaces)
-       (reduce union)))
 
 (defn- single-ns
   "Give a map, returns the single namepace used in all of the keys,
