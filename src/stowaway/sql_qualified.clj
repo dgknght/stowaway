@@ -5,6 +5,8 @@
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
             [camel-snake-kebab.core :refer [->snake_case]]
+            [stowaway.inflection :refer [plural
+                                         singular]]
             [stowaway.graph :as g]
             [stowaway.criteria :refer [namespaces]]
             [stowaway.sql :as sql]))
@@ -20,23 +22,7 @@
 (def apply-limit sql/apply-limit)
 (def apply-offset sql/apply-offset)
 (def select-count sql/select-count)
-(def plural sql/plural)
 (def delimit sql/delimit)
-
-(defn- apply-word-rule
-  [word {:keys [pattern f]}]
-  (when-let [match (re-find pattern word)]
-    (f match)))
-
-(defn- singular
-  [word]
-  (some (partial apply-word-rule word)
-        [{:pattern #"(?i)\Achildren\z"
-          :f (constantly "child")}
-         {:pattern #"\A(.+)ies\z"
-          :f #(str (second %) "y")}
-         {:pattern #"\A(.+)s\z"
-          :f #(str (second %))}]))
 
 (defn- postgres-array
   [values]
