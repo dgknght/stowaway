@@ -5,13 +5,21 @@
 (deftest make-a-singular-word-plural
   (are [input expected] (= expected (i/plural input))
        "child"  "children"
+       :child   :children
        "entity" "entities"
+       :entity  :entities
        "bass"   "basses"
-       "book"   "books"))
+       :bass    :basses
+       "book"   "books"
+       :book    :books))
 
 (deftest make-a-plural-word-singular
   (are [input expected] (= expected (i/singular input))
        "children" "child"
+       :children  :child
        "entities" "entity"
+       :entities  :entity
        "basses"   "bass"
-       "books"    "book"))
+       :basses    :bass
+       "books"    "book"
+       :books     :book))

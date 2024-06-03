@@ -1,4 +1,8 @@
-(ns stowaway.inflection)
+(ns stowaway.inflection
+  (:require [clojure.pprint :refer [pprint]]))
+
+(derive java.lang.String ::string)
+(derive clojure.lang.Keyword ::keyword)
 
 (defn- apply-word-rule
   [word {:keys [pattern f]}]
@@ -20,9 +24,15 @@
    {:pattern #".+"
     :f #(str % "s")}])
 
-(defn plural
+(defmulti plural type)
+
+(defmethod plural ::string
   [word]
   (apply-rules word ->plural-rules))
+
+(defmethod plural ::keyword
+  [word]
+  (-> word name plural keyword))
 
 (def ^:private ->singular-rules
   [{:pattern #"(?i)\Achildren\z"
@@ -34,6 +44,13 @@
    {:pattern #"\A(.+)s\z"
     :f #(str (second %))}])
 
-(defn singular
+(defmulti singular type)
+
+(defmethod singular ::string
   [word]
-  (apply-rules word ->singular-rules))
+  (when word
+    (apply-rules word ->singular-rules)))
+
+(defmethod singular ::keyword
+  [word]
+  (-> word name singular keyword))
