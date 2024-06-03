@@ -2,7 +2,7 @@
   (:require [clojure.test :refer [deftest is]]
             [stowaway.mongo :as m]))
 
-(deftest convert-a-criteria-into-an-aggregation-pipeline
+(deftest convert-criteria-into-an-aggregation-pipeline
   (is (= [{:$match {:purchase_date "2020-01-01"}}
           {:$lookup {:from "users"
                     :as "users"
@@ -11,5 +11,5 @@
           {:$match {:users.first_name "John"}}]
          (m/criteria->aggregation {:order/purchase-date "2020-01-01"
                                    :user/first-name "John"}
-                                  {:target :user
+                                  {:collection :orders
                                    :relationships #{[:users :orders]}}))))
