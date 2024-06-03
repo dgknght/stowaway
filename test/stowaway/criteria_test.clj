@@ -12,3 +12,33 @@
          (c/namespaces [:or
                         {:user/first-name "John"}
                         {:order/purchase-date "2010-01-01"}]))))
+
+(deftest extract-portions-from-a-criteria-map-for-a-namespce
+  (is (= {:first-name "John"
+          :age 32}
+         (c/extract-ns {:user/first-name "John"
+                        :user/age 32
+                        :order/purchase-date "2010-01-01"}
+                       :user))
+      "Keys with the specifed ns are retained but stripped of the ns")
+  (is (nil? (c/extract-ns {:user/first-name "John"}
+                          :order))
+      "When no keys match, nil is returned"))
+
+(deftest extract-portions-from-a-criteria-vector-for-a-namespce
+  (is (= [:or
+          {:first-name "John"}
+          {:age 32}]
+         (c/extract-ns [:or
+                        {:user/first-name "John"
+                         :order/purchase-date "2010-01-01"}
+                        {:user/age 32}]
+                       :user))
+      "A conjunction with more than one element is retained")
+  (is (= {:first-name "John"}
+         (c/extract-ns [:or
+                        {:user/first-name "John"}
+                        {:order/purchase-date "2010-01-01"}]
+                       :user))
+      "A single criteria is extracted from a conjunction")
+  )
