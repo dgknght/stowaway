@@ -1,13 +1,27 @@
 (ns stowaway.mongo
-  (:require [stowaway.graph :as g]
-            [stowaway.criteria :refer [namespaces]]))
+  #_(:require [stowaway.graph :as g]
+            [stowaway.inflection :refer [singular]]
+            [stowaway.criteria :refer [namespaces
+                                       extract-ns]]))
 
-(defn- extract-collections
+#_(defn- extract-collections
   [criteria]
   (map identity (namespaces criteria)))
 
+#_(defn- match
+  [criteria]
+  {:$match :x})
+
+#_(defn- lookup-and-match
+  [collection relationships])
+
 (defn criteria->aggregation
-  [criteria {:keys [collection relationships]}]
-  (let [paths (g/shortest-paths collection
+  [_criteria {:keys [_collection _relationships]}]
+  #_(let [paths (g/shortest-paths collection
                                 (extract-collections criteria)
-                                relationships)]))
+                                relationships)]
+    (cons (-> criteria
+              (extract-ns (singular collection))
+              match)
+          (map #(lookup-and-match % relationships)
+               (rest paths)))))
