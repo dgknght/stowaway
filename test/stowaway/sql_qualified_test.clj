@@ -1,13 +1,9 @@
 (ns stowaway.sql-qualified-test
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.data :refer [diff]]
             [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
-            [honey.sql.helpers :as h]
-            [honey.sql :as hsql]
             [stowaway.geometry :as geo]
-            [stowaway.sql-qualified :as sql]
-            [clojure.pprint :as pp]))
+            [stowaway.sql-qualified :as sql]))
 
 (deftest query-a-single-table-with-simple-single-field-equality
   (is (= ["SELECT users.* FROM users WHERE users.last_name = ?" "Doe"]
