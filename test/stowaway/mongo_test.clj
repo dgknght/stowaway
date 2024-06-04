@@ -4,12 +4,12 @@
 
 (deftest convert-criteria-into-an-aggregation-pipeline
   (testing "simple map with downstream join"
-    (is (= [{:$match {:users.first_name "John"}}
+    (is (= [{:$match {:first_name "John"}}
           {:$lookup {:from "orders"
                     :as "orders"
                     :localField "_id"
                     :foreignField "user_id"}}
-            {:$match {:purchase_date "2020-01-01"}}]
+            {:$match {:orders.purchase_date "2020-01-01"}}]
          (m/criteria->aggregation {:order/purchase-date "2020-01-01"
                                    :user/first-name "John"}
                                   {:collection :users

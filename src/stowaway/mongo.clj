@@ -16,28 +16,43 @@
        (namespaces criteria)))
 
 (defn- match
-  [criteria]
-  {:$match (update-keys criteria ->snake_case_keyword)})
+  [criteria & [prefix]]
+  (let [prefix-fn (if prefix
+                    #(keyword (str (name prefix) "." (name %)))
+                    identity)]
+    {:$match (update-keys criteria (comp ->snake_case_keyword
+                                         prefix-fn))}))
+
+(defn- ref-field
+  "Given a collection name, return the name of the field another
+  collection would use to reference a document in the given collection.
+
+  E.g., given the collection name :users, return :user_id."
+  [collection]
+  (str (singular (name collection)) "_id"))
 
 (defn- lookup-and-match
-  [[n1 n2 :as edge] relationships]
-  (let [[_ c2] (some relationships
+  [[_ n2 :as edge] criteria relationships]
+  (let [[c1 c2] (some relationships
                       [edge
                        (reverse edge)])
         from (name n2)
+        ref-field (ref-field c1)
         [local foreign] (if (= c2 n2)
-                          ["_id" (str (name n1) "_id")]
-                          [(str (singular (name n2)) "_id") "_id"])]
+                          ["_id" ref-field]
+                          [ref-field "_id"])]
     [{:$lookup {:from from
                :as from
                :localField local
-               :foreignField foreign}}]))
+               :foreignField foreign}}
+     (match (extract-ns criteria, (singular n2))
+            from)]))
 
 (defn- path->stages
-  [path relationships]
+  [path criteria relationships]
   (->> path
        (partition 2 1)
-       (mapcat #(lookup-and-match % relationships))))
+       (mapcat #(lookup-and-match % criteria relationships))))
 
 (defn criteria->aggregation
   [criteria {:keys [collection relationships]}]
@@ -47,5 +62,5 @@
     (cons (-> criteria
               (extract-ns (singular collection))
               match)
-          (mapcat #(path->stages % relationships)
+          (mapcat #(path->stages % criteria relationships)
                paths))))
