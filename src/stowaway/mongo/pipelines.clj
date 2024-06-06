@@ -1,4 +1,4 @@
-(ns stowaway.mongo
+(ns stowaway.mongo.pipelines
   (:require [clojure.pprint :refer [pprint]]
             [camel-snake-kebab.core :refer [->snake_case_keyword]]
             [stowaway.graph :as g]
@@ -6,6 +6,10 @@
                                          plural]]
             [stowaway.criteria :refer [namespaces
                                        extract-ns]]))
+
+(derive clojure.lang.PersistentVector ::vector)
+(derive clojure.lang.PersistentHashMap ::map)
+(derive clojure.lang.PersistentArrayMap ::map)
 
 (defn- extract-collections
   "Give a criteria, return a vector of namespaces tranlated
@@ -54,7 +58,7 @@
        (partition 2 1)
        (mapcat #(lookup-and-match % criteria relationships))))
 
-(defn criteria->aggregation
+(defn criteria->pipeline
   [criteria {:keys [collection relationships]}]
   (let [paths (g/shortest-paths collection
                                 (extract-collections criteria)
