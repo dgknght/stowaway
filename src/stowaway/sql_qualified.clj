@@ -5,10 +5,12 @@
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
             [camel-snake-kebab.core :refer [->snake_case]]
+            [stowaway.util :refer [key-join]]
             [stowaway.inflection :refer [plural
                                          singular]]
             [stowaway.graph :as g]
-            [stowaway.criteria :refer [namespaces]]
+            [stowaway.criteria :refer [namespaces
+                                       single-ns]]
             [stowaway.sql :as sql]))
 
 (s/def ::relationship (s/tuple keyword? keyword?))
@@ -167,23 +169,6 @@
       (first clauses)
       (apply vector :and clauses))))
 
-(defn- single-ns
-  "Give a map, returns the single namepace used in all of the keys,
-  or returns nil if multiple namespaces are used."
-  [criteria]
-  (let [ns (namespaces criteria)]
-    (when (= 1 (count ns))
-      (first ns))))
-
-(defn- k-join
-  [& vs]
-  (keyword
-    (->> vs
-         (map #(if (keyword? %)
-                 (name %)
-                 %))
-         (str/join))))
-
 (defn- find-relationship
   "Give two table names in any order, return the relationship
   which contains them in primary first, foreign second order."
@@ -200,8 +185,8 @@
   (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (k-join t1 ".id")
-         (k-join t2 "." (-> t1 name singular) "_id")])))
+         (key-join t1 ".id")
+         (key-join t2 "." (-> t1 name singular) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -264,7 +249,7 @@
         fmt (if skip-format?
               identity
               #(hsql/format % {:params named-params}))]
-    (-> (h/select (k-join table ".*"))
+    (-> (h/select (key-join table ".*"))
         (h/from table)
         (h/where (->where criteria opts))
         (join (->joins criteria

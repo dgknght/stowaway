@@ -18,4 +18,7 @@
            (g/shortest-paths :order-item #{:user :order :product}
                              #{[:user :order]
                                [:order :order-item]
-                               [:product :order-item]})))))
+                               [:product :order-item]}))))
+    (testing "No path found"
+      (is (empty? (g/shortest-paths :order-item #{:popsicle}
+                                    #{[:order :order-item]})))))

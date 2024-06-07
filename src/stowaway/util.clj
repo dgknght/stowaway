@@ -1,5 +1,6 @@
 (ns stowaway.util
-  (:require [clojure.walk :refer [prewalk]]))
+  (:require [clojure.walk :refer [prewalk]]
+            [clojure.string :as str]))
 
 (defn- deep-contains?
   [m [k & ks]]
@@ -56,3 +57,13 @@
                (update-in x [0] (comp keyword name))
                x))
            m))
+
+(defn key-join
+  "Returns the given params (strings for keywords) joined into a keyword."
+  [& vs]
+  (keyword
+    (->> vs
+         (map #(if (keyword? %)
+                 (name %)
+                 %))
+         (str/join))))

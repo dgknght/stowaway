@@ -2,21 +2,30 @@
   (:require [clojure.test :refer [deftest is testing]]
             [stowaway.mongo.pipelines :as m]))
 
-(deftest split-on-namespace
-  ; 1. get the list of matching entities
-  ; 2. update the commodity query to include entity ids from 1st query
-  (is (= [{:$match {:entity_id 201}} ; 1st match is against the target collection, commodities
-          {:$lookup {:from "entities"
-                     :localField "entity_id"
-                     :foreignField "_id"
-                     :as "entities"}}
-          ; in this direction, should we call the lookup "entity" and unwind it?
-          {:$match {:entities.owner_id 101}}]
-         (m/criteria->pipeline {:commodity/entity-id 201
-                               :entity/owner-id 101}
-                              {:target :commodity
-                               :relationships #{[:user :entity]
-                                                [:entity :commodity]}}))))
+(deftest convert-a-criteria-to-an-aggregation-pipeline
+  (testing "upstream join"
+    (is (= [{:$match {:purchase_date "2020-01-01"}}
+            {:$lookup {:from "users"
+                       :localField "user_id"
+                       :foreignField "_id"
+                       :as "users"}}
+            ; in this direction, should we call the lookup "user" and unwind it?
+            {:$match {:users.first_name "John"}}]
+           (m/criteria->pipeline {:user/first-name "John"
+                                  :order/purchase-date "2020-01-01"}
+                                 {:collection :orders
+                                  :relationships #{[:users :orders]}})))
+    (testing "downstream join"
+      (is (= [{:$match {:first_name "John"}}
+              {:$lookup {:from "orders"
+                         :localField "_id"
+                         :foreignField "user_id"
+                         :as "orders"}}
+              {:$match {:orders.purchase_date "2020-01-01"}}]
+             (m/criteria->pipeline {:user/first-name "John"
+                                    :order/purchase-date "2020-01-01"}
+                                   {:collection :users
+                                    :relationships #{[:users :orders]}}))))))
 
 (deftest convert-criteria-into-an-aggregation-pipeline
   (testing "simple map with downstream join"

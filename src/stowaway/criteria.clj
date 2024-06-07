@@ -21,7 +21,10 @@
        (map namespaces)
        (reduce union)))
 
-(defmulti extract-ns (fn [x _] (type x)))
+(defmulti extract-ns
+  "Given a criteria and a namespace, extract the portions of the criteria
+  that are applicable to the namespace."
+  (fn [x _] (type x)))
 
 (defmethod extract-ns ::map
   [criteria n]
@@ -42,3 +45,11 @@
     (if (= 1 (count extracted))
       (first extracted)
       (apply vector oper extracted))))
+
+(defn single-ns
+  "Give a criteria (map or vector), returns the single namepace used in all of the keys,
+  or returns nil if multiple namespaces are used."
+  [criteria]
+  (let [ns (namespaces criteria)]
+    (when (= 1 (count ns))
+      (first ns))))

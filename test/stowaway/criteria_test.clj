@@ -40,5 +40,14 @@
                         {:user/first-name "John"}
                         {:order/purchase-date "2010-01-01"}]
                        :user))
-      "A single criteria is extracted from a conjunction")
-  )
+      "A single criteria is extracted from a conjunction"))
+
+(deftest extract-a-single-namespace-from-a-criteria
+  (is (= "user" (c/single-ns {:user/first-name "John"
+                             :user/last-name "Doe"}))
+      "When one namespace is found, it is returned")
+  (is (nil? (c/single-ns {:first-name "John"}))
+      "Wnen no namespaces are found, nil is returned")
+  (is (nil? (c/single-ns {:user/first-name "John"
+                          :order/purchase-date "2020-01-01"}))
+      "When multiple namespaces are found, nil is returned"))

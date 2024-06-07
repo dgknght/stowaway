@@ -36,3 +36,9 @@
 (deftest unqaulify-map-keys
   (is (= {:name "Personal"}
          (u/unqualify-keys {:entity/name "Personal"}))))
+
+(deftest combine-values-into-a-keyword
+  (is (= :the-word (u/key-join "the" "-" "word"))
+      "String inputs are accepted")
+  (is (= :the-word (u/key-join "the-" :word))
+      "Keyword inputs are accepted"))

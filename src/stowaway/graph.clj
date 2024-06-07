@@ -31,6 +31,7 @@
   connects all of them."
   [from nodes relationships]
   (->> nodes
-         (map (shortest-path-fn from relationships))
-         (sort-by count >)
-         (reduce drop-duplicative [])))
+       (map (shortest-path-fn from relationships))
+       (filter identity)
+       (sort-by count >)
+       (reduce drop-duplicative [])))

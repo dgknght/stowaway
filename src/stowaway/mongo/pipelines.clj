@@ -5,7 +5,9 @@
             [stowaway.inflection :refer [singular
                                          plural]]
             [stowaway.criteria :refer [namespaces
-                                       extract-ns]]))
+                                       extract-ns
+                                       single-ns]]
+            [stowaway.mongo :refer [translate-criteria]]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentHashMap ::map)
@@ -59,12 +61,25 @@
        (mapcat #(lookup-and-match % criteria relationships))))
 
 (defn criteria->pipeline
-  [criteria {:keys [collection relationships]}]
-  (let [paths (g/shortest-paths collection
-                                (extract-collections criteria)
+  [criteria {:keys [collection relationships] :as options}]
+  (let [collection (or collection
+                       (plural (single-ns criteria)))
+        targets (extract-collections criteria)
+        paths (g/shortest-paths collection
+                                targets
                                 relationships)]
+
+    (assert (or (= 1 (count (conj (set targets)
+                                  collection)))
+                (seq paths))
+            (format "Unable to connect the target collection %s to all elements of the criteria %s via relationships %s"
+                    collection
+                    (into [] targets)
+                    relationships))
+
     (cons (-> criteria
               (extract-ns (singular collection))
+              (translate-criteria options)
               match)
           (mapcat #(path->stages % criteria relationships)
                paths))))
