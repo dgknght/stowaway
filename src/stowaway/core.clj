@@ -2,6 +2,10 @@
   (:refer-clojure :exclude [update])
   (:require [clojure.tools.logging :as log]))
 
+(derive clojure.lang.PersistentVector ::vector)
+(derive clojure.lang.PersistentHashMap ::map)
+(derive clojure.lang.PersistentArrayMap ::map)
+
 (defprotocol Storage
   "This protocol defines the abstract CRUD operations to be used
   by the application. This abstraction can be implemented by whatever

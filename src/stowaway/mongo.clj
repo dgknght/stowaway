@@ -3,6 +3,7 @@
             [clojure.walk :refer [postwalk]]
             [clojure.set :refer [rename-keys]]
             [camel-snake-kebab.core :refer [->snake_case]]
+            [stowaway.core :as s]
             [stowaway.util :refer [unqualify-keys
                                    update-in-if]]))
 
@@ -72,7 +73,7 @@
 
 (defmulti translate-criteria (fn [criteria _] (type criteria)))
 
-(defmethod translate-criteria ::map
+(defmethod translate-criteria ::s/map
   [criteria {:keys [coerce-id] :or {coerce-id identity}}]
   (-> criteria
         unqualify-keys
@@ -81,7 +82,7 @@
         (rename-keys {:id :_id})
         adjust-complex-criteria))
 
-(defmethod translate-criteria ::vector
+(defmethod translate-criteria ::s/vector
   [[oper & crits] opts]
   (if (= :or oper)
     {:$or (mapv #(translate-criteria % opts) crits)}

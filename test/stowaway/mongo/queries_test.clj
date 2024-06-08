@@ -52,7 +52,7 @@
   (is (= {:sort [[:first_name 1]]}
          (m/criteria->query {} {:order-by [[:first-name :asc]]}))
       ":order-by is is translated as :sort")
-  (is (= {:sort [[:first_name 1]]}
+  (is (= {:sort [[:first_name -1]]}
          (m/criteria->query {} {:order-by [[:first-name :desc]]}))
       "Order can be descending")
   (is (= {:sort [[:first_name 1]]}

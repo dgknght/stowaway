@@ -1,11 +1,8 @@
 (ns stowaway.mongo.queries
   (:require [clojure.pprint :refer [pprint]]
             [camel-snake-kebab.core :refer [->snake_case]]
+            [stowaway.core :as s]
             [stowaway.mongo :refer [translate-criteria]]))
-
-(derive clojure.lang.PersistentVector ::vector)
-(derive clojure.lang.PersistentHashMap ::map)
-(derive clojure.lang.PersistentArrayMap ::map)
 
 (defmulti ^:private ->mongodb-sort type)
 
@@ -13,7 +10,7 @@
   [x]
   [(->snake_case x) 1])
 
-(defmethod ->mongodb-sort ::vector
+(defmethod ->mongodb-sort ::s/vector
   [sort]
   (-> sort
       (update-in [0] ->snake_case)

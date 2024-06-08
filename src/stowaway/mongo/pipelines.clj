@@ -9,10 +9,6 @@
                                        single-ns]]
             [stowaway.mongo :refer [translate-criteria]]))
 
-(derive clojure.lang.PersistentVector ::vector)
-(derive clojure.lang.PersistentHashMap ::map)
-(derive clojure.lang.PersistentArrayMap ::map)
-
 (defn- extract-collections
   "Give a criteria, return a vector of namespaces tranlated
   into collection names as keywords"
