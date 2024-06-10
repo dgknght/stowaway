@@ -17,12 +17,18 @@
              plural)
        (namespaces criteria)))
 
+(defn- ->snake-case-keyword
+  [x]
+  (if (= :_id x)
+    x
+    (->snake_case_keyword x)))
+
 (defn- match
   [criteria & [prefix]]
   (let [prefix-fn (if prefix
                     #(keyword (str (name prefix) "." (name %)))
                     identity)]
-    {:$match (update-keys criteria (comp ->snake_case_keyword
+    {:$match (update-keys criteria (comp ->snake-case-keyword
                                          prefix-fn))}))
 
 (defn- ref-field

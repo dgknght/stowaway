@@ -60,3 +60,8 @@
   (is (= [{:$match {:age {:$ne 21}}}]
          (m/criteria->pipeline {:user/age [:!= 21]}
                                   {:collection :users}))))
+
+(deftest convert-criteria-with-id-key
+  (is (= [{:$match {:_id 101}}]
+         (m/criteria->pipeline {:user/_id 101}
+                                  {:collection :users}))))

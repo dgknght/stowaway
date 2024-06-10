@@ -8,7 +8,10 @@
       "A simple attribute equalify criterion is left as-is")
   (is (= {:where {:first_name "John"}}
          (m/criteria->query {:first-name "John"}))
-      "A kebab-case key is converted to snake case"))
+      "A kebab-case key is converted to snake case")
+  (is (= {:where {:_id 101}}
+         (m/criteria->query {:_id 101}))
+      "An :_id key is preserved"))
 
 (deftest convert-criterion-with-predicate
   (is (= {:where {:avg_size {:$gt 5}}}
