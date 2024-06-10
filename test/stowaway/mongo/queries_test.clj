@@ -37,13 +37,13 @@
                              {:first-name "John"}
                              {:last-name "Doe"}]))
       "A top-level :or is convered correctly")
-  #_(is (= {:where {:first-name "John"
+  (is (= {:where {:first-name "John"
                   :last-name "Doe"}}
         (m/criteria->query [:and
                             {:first-name "John"}
                             {:last-name "Doe"}]))
       "$and is not supported (map is preferred)")
-  #_(is (= {:where {:size {:$gte 2 :$lt 5}}}
+  (is (= {:where {:size {:$gte 2 :$lt 5}}}
          (m/criteria->query {:size [:and [:>= 2] [:< 5]]}))))
 
 (deftest apply-a-sort
