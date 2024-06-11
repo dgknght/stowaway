@@ -63,25 +63,26 @@
        (mapcat #(lookup-and-match % criteria relationships))))
 
 (defn criteria->pipeline
-  [criteria {:keys [collection relationships] :as options}]
-  (let [collection (or collection
-                       (plural (single-ns criteria)))
-        targets (extract-collections criteria)
-        paths (g/shortest-paths collection
-                                targets
-                                relationships)]
+  ([criteria] (criteria->pipeline criteria {}))
+  ([criteria {:keys [collection relationships] :as options}]
+   (let [collection (or collection
+                        (plural (single-ns criteria)))
+         targets (extract-collections criteria)
+         paths (g/shortest-paths collection
+                                 targets
+                                 relationships)]
 
-    (assert (or (= 1 (count (conj (set targets)
-                                  collection)))
-                (seq paths))
-            (format "Unable to connect the target collection %s to all elements of the criteria %s via relationships %s"
-                    collection
-                    (into [] targets)
-                    relationships))
+     (assert (or (= 1 (count (conj (set targets)
+                                   collection)))
+                 (seq paths))
+             (format "Unable to connect the target collection %s to all elements of the criteria %s via relationships %s"
+                     collection
+                     (into [] targets)
+                     relationships))
 
-    (cons (-> criteria
-              (extract-ns (singular collection))
-              (translate-criteria options)
-              match)
-          (mapcat #(path->stages % criteria relationships)
-               paths))))
+     (cons (-> criteria
+               (extract-ns (singular collection))
+               (translate-criteria options)
+               match)
+           (mapcat #(path->stages % criteria relationships)
+                   paths)))))

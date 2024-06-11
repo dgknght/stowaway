@@ -59,9 +59,20 @@
 (deftest convert-criteria-with-negative-match-to-an-aggregation-pipeline
   (is (= [{:$match {:age {:$ne 21}}}]
          (m/criteria->pipeline {:user/age [:!= 21]}
-                                  {:collection :users}))))
+                               {:collection :users}))))
 
 (deftest convert-criteria-with-id-key
   (is (= [{:$match {:_id 101}}]
          (m/criteria->pipeline {:user/_id 101}
-                                  {:collection :users}))))
+                               {:collection :users}))))
+
+(deftest convert-criteria-with-model-reference
+  (is (= [{:$match {:entity_id 101}}]
+         (m/criteria->pipeline {:commodity/entity-id 101}))
+      "The foreign key is transformed into snake case")
+  (is (= [{:$match {:entity_id 101}}]
+         (m/criteria->pipeline {:commodity/entity {:id 101}}))
+      "A simplified reference is converted to a foreign key")
+  ; TODO: test {:commodity/entity {:id 201}}
+  ;             :entity/owner {:id 101}}
+  )
