@@ -40,7 +40,7 @@
   (str (singular (name collection)) "_id"))
 
 (defn- lookup-and-match
-  [[_ n2 :as edge] criteria relationships]
+  [[_ n2 :as edge] criteria {:keys [relationships] :as options}]
   (let [[c1 c2] (some relationships
                       [edge
                        (reverse edge)])
@@ -53,25 +53,30 @@
                :as from
                :localField local
                :foreignField foreign}}
-     (match (extract-ns criteria, (singular n2))
-            from)]))
+     (-> criteria
+         (extract-ns (singular n2))
+         (translate-criteria options)
+         (match from)) ]))
 
 (defn- path->stages
-  [path criteria relationships]
+  [path criteria options]
   (->> path
        (partition 2 1)
-       (mapcat #(lookup-and-match % criteria relationships))))
+       (mapcat #(lookup-and-match % criteria options))))
 
 (defn criteria->pipeline
   ([criteria] (criteria->pipeline criteria {}))
   ([criteria {:keys [collection relationships] :as options}]
    (let [collection (or collection
-                        (plural (single-ns criteria)))
+                        (some-> criteria
+                                single-ns
+                                plural
+                                keyword)
+                        (throw (RuntimeException. "Unable to determine the target location for the criteria.")))
          targets (extract-collections criteria)
          paths (g/shortest-paths collection
                                  targets
                                  relationships)]
-
      (assert (or (= 1 (count (conj (set targets)
                                    collection)))
                  (seq paths))
@@ -84,5 +89,5 @@
                (extract-ns (singular collection))
                (translate-criteria options)
                match)
-           (mapcat #(path->stages % criteria relationships)
+           (mapcat #(path->stages % criteria options)
                    paths)))))

@@ -73,6 +73,15 @@
   (is (= [{:$match {:entity_id 101}}]
          (m/criteria->pipeline {:commodity/entity {:id 101}}))
       "A simplified reference is converted to a foreign key")
-  ; TODO: test {:commodity/entity {:id 201}}
-  ;             :entity/owner {:id 101}}
-  )
+  (is (= [{:$match {:sku "ABC123"}}
+          {:$lookup {:from "orders"
+                     :as "orders"
+                     :localField "order_id"
+                     :foreignField "_id"}}
+          {:$match {:orders.user_id 101}}]
+         (m/criteria->pipeline {:order-item/sku "ABC123"
+                                :order/user {:id 101}}
+                               {:collection :order-items
+                                :relationships #{[:users :orders]
+                                                 [:orders :order-items]}}))
+      "Keys are also converted in joins"))

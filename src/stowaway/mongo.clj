@@ -6,7 +6,8 @@
             [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.core :as s]
             [stowaway.util :refer [unqualify-keys
-                                   update-in-if]]))
+                                   update-in-if
+                                   key-join]]))
 
 (defn- contains-mongo-keys?
   [m]
@@ -14,16 +15,38 @@
        (map name)
        (some #(str/starts-with? % "$"))))
 
+(defn- one?
+  [c]
+  (= 1 (count c)))
+
+(def ^:private simple-model-ref?
+  (every-pred map?
+              one?
+              #(= :id (first (keys %)))))
+
+(defmulti ^:private ->mongo-key type)
+
+(defmethod ->mongo-key :default [x] x)
+
+(defmethod ->mongo-key ::s/map
+  [m]
+  (if (contains-mongo-keys? m)
+    m
+    (update-keys m ->snake_case)))
+
+(defmethod ->mongo-key ::s/map-entry
+  [[_ v :as e]]
+  (if (simple-model-ref? v)
+    (-> e
+        (update-in [0] #(key-join % "-id"))
+        (update-in [1] :id))
+    e))
+
 ; TODO: I think we need to be smarter about transforming model keys
 ; verses mongo query keys, but this will keep us moving for now
 (defn ->mongo-keys
   [m]
-  (postwalk (fn [x]
-              (if (and (map? x)
-                       (not (contains-mongo-keys? x)))
-                (update-keys x ->snake_case)
-                x))
-            m))
+  (postwalk ->mongo-key m))
 
 (def oper-map
   {:> :$gt
