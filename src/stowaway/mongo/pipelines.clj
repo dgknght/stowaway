@@ -74,20 +74,25 @@
                      (into [] targets)
                      relationships)))
 
+(defn- calc-paths
+  [criteria {:keys [collection relationships] :as options}]
+  (let [targets (extract-collections criteria)
+        paths (g/shortest-paths collection
+                                targets
+                                relationships)]
+    (assert-readiness collection targets paths options)
+    paths))
+
 (defn criteria->pipeline
   ([criteria] (criteria->pipeline criteria {}))
-  ([criteria {:keys [count collection relationships] :as options}]
+  ([criteria {:keys [count collection] :as options}]
    (let [collection (or collection
-                        (some-> criteria
-                                single-ns
-                                plural
-                                keyword)
-                        (throw (RuntimeException. "Unable to determine the target location for the criteria.")))
-         targets (extract-collections criteria)
-         paths (g/shortest-paths collection
-                                 targets
-                                 relationships)
-         _ (assert-readiness collection targets paths options)
+                       (some-> criteria
+                               single-ns
+                               plural
+                               keyword)
+                       (throw (RuntimeException. "Unable to determine the target location for the criteria.")))
+         paths (calc-paths criteria (assoc options :collection collection))
          first-stage (some-> criteria
                              (extract-ns (singular collection))
                              (translate-criteria options)
@@ -97,5 +102,4 @@
          stages (cons first-stage remaining-stages)]
      (if count
        (concat stages [{:$count "document_count"}])
-       stages)
-     )))
+       stages))))
