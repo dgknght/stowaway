@@ -14,18 +14,18 @@
            (m/criteria->pipeline {:user/first-name "John"
                                   :order/purchase-date "2020-01-01"}
                                  {:collection :orders
-                                  :relationships #{[:users :orders]}})))
-    (testing "downstream join"
-      (is (= [{:$match {:first_name "John"}}
-              {:$lookup {:from "orders"
-                         :localField "_id"
-                         :foreignField "user_id"
-                         :as "orders"}}
-              {:$match {:orders.purchase_date "2020-01-01"}}]
-             (m/criteria->pipeline {:user/first-name "John"
-                                    :order/purchase-date "2020-01-01"}
-                                   {:collection :users
-                                    :relationships #{[:users :orders]}}))))))
+                                  :relationships #{[:users :orders]}}))))
+  (testing "downstream join"
+    (is (= [{:$match {:first_name "John"}}
+            {:$lookup {:from "orders"
+                       :localField "_id"
+                       :foreignField "user_id"
+                       :as "orders"}}
+            {:$match {:orders.purchase_date "2020-01-01"}}]
+           (m/criteria->pipeline {:user/first-name "John"
+                                  :order/purchase-date "2020-01-01"}
+                                 {:collection :users
+                                  :relationships #{[:users :orders]}})))))
 
 (deftest convert-criteria-into-an-aggregation-pipeline
   (testing "simple map with downstream join"
