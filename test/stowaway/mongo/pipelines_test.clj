@@ -46,15 +46,15 @@
   ; relationship
   (testing "simple map with upstream join"
     (is (= [{:$match {:purchase_date "2020-01-01"}}
-          {:$lookup {:from "users"
-                    :as "users"
-                    :localField "user_id"
-                    :foreignField "_id"}}
-          {:$match {:users.first_name "John"}}]
-         (m/criteria->pipeline {:order/purchase-date "2020-01-01"
-                                   :user/first-name "John"}
-                                  {:collection :orders
-                                   :relationships #{[:users :orders]}})))))
+            {:$lookup {:from "users"
+                       :as "users"
+                       :localField "user_id"
+                       :foreignField "_id"}}
+            {:$match {:users.first_name "John"}}]
+           (m/criteria->pipeline {:order/purchase-date "2020-01-01"
+                                  :user/first-name "John"}
+                                 {:collection :orders
+                                  :relationships #{[:users :orders]}})))))
 
 (deftest convert-criteria-with-negative-match-to-an-aggregation-pipeline
   (is (= [{:$match {:age {:$ne 21}}}]
