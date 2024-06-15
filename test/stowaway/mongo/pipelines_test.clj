@@ -63,8 +63,7 @@
 
 (deftest convert-criteria-with-id-key
   (is (= [{:$match {:_id 101}}]
-         (m/criteria->pipeline {:user/_id 101}
-                               {:collection :users}))))
+         (m/criteria->pipeline {:user/_id 101}))))
 
 (deftest convert-criteria-with-model-reference
   (is (= [{:$match {:entity_id 101}}]
