@@ -84,10 +84,9 @@
                      collection
                      (into [] targets)
                      relationships))
-
-     (cons (-> criteria
-               (extract-ns (singular collection))
-               (translate-criteria options)
-               match)
+     (cons (some-> criteria
+                   (extract-ns (singular collection))
+                   (translate-criteria options)
+                   match)
            (mapcat #(path->stages % criteria options)
                    paths)))))
