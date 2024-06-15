@@ -61,6 +61,26 @@
          (m/criteria->pipeline {:user/age [:!= 21]}
                                {:collection :users}))))
 
+(deftest convert-criteria-for-count
+  (testing "single collection"
+    (is (= [{:$match {:first_name "John"}}
+            {:$count "document_count"}]
+           (m/criteria->pipeline {:users/first-name "John"}
+                                 {:count true}))))
+  (testing "with join"
+    (is (= [{:$match {:first_name "John"}}
+            {:$lookup {:from "orders"
+                       :as "orders"
+                       :localField "_id"
+                       :foreignField "user_id"}}
+            {:$match {:orders.purchase_date "2020-01-01"}}
+            {:$count "document_count"}]
+           (m/criteria->pipeline {:user/first-name "John"
+                                  :order/purchase-date "2020-01-01"}
+                                 {:collection :users
+                                  :relationships #{[:users :orders]}
+                                  :count true})))))
+
 (deftest convert-criteria-with-id-key
   (is (= [{:$match {:_id 101}}]
          (m/criteria->pipeline {:user/_id 101}))))

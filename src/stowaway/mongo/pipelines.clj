@@ -64,9 +64,19 @@
        (partition 2 1)
        (mapcat #(lookup-and-match % criteria options))))
 
+(defn- assert-readiness
+  [collection targets paths {:keys [relationships]}]
+  (assert (or (= 1 (count (conj (set targets)
+                                   collection)))
+                 (seq paths))
+             (format "Unable to connect the target collection %s to all elements of the criteria %s via relationships %s"
+                     collection
+                     (into [] targets)
+                     relationships)))
+
 (defn criteria->pipeline
   ([criteria] (criteria->pipeline criteria {}))
-  ([criteria {:keys [collection relationships] :as options}]
+  ([criteria {:keys [count collection relationships] :as options}]
    (let [collection (or collection
                         (some-> criteria
                                 single-ns
@@ -76,17 +86,16 @@
          targets (extract-collections criteria)
          paths (g/shortest-paths collection
                                  targets
-                                 relationships)]
-     (assert (or (= 1 (count (conj (set targets)
-                                   collection)))
-                 (seq paths))
-             (format "Unable to connect the target collection %s to all elements of the criteria %s via relationships %s"
-                     collection
-                     (into [] targets)
-                     relationships))
-     (cons (some-> criteria
-                   (extract-ns (singular collection))
-                   (translate-criteria options)
-                   match)
-           (mapcat #(path->stages % criteria options)
-                   paths)))))
+                                 relationships)
+         _ (assert-readiness collection targets paths options)
+         first-stage (some-> criteria
+                             (extract-ns (singular collection))
+                             (translate-criteria options)
+                             match)
+         remaining-stages (mapcat #(path->stages % criteria options)
+                                  paths)
+         stages (cons first-stage remaining-stages)]
+     (if count
+       (concat stages [{:$count "document_count"}])
+       stages)
+     )))
