@@ -64,42 +64,62 @@
        (partition 2 1)
        (mapcat #(lookup-and-match % criteria options))))
 
-(defn- assert-readiness
-  [collection targets paths {:keys [relationships]}]
-  (assert (or (= 1 (count (conj (set targets)
-                                   collection)))
-                 (seq paths))
-             (format "Unable to connect the target collection %s to all elements of the criteria %s via relationships %s"
-                     collection
-                     (into [] targets)
-                     relationships)))
+(defn- append-targets
+  [{:keys [criteria] :as m}]
+  (assoc m :targets (extract-collections criteria)))
 
-(defn- calc-paths
-  [criteria {:keys [collection relationships] :as options}]
-  (let [targets (extract-collections criteria)
-        paths (g/shortest-paths collection
-                                targets
-                                relationships)]
-    (assert-readiness collection targets paths options)
-    paths))
+(defn- single-col-query?
+  [{:keys [targets collection]}]
+  (= 1 (count (conj (set targets) collection))))
+
+(defn- append-paths
+  [{:keys [collection targets relationships] :as m}]
+  (if (single-col-query? m)
+    m
+    (if-let [paths (seq (g/shortest-paths collection
+                                          targets
+                                          relationships))]
+      (assoc m :paths paths)
+      (throw (ex-info "Unable to connect the target collection to all elements of the criteria" m)))))
+
+(defn- ensure-collection
+  [{:keys [collection criteria] :as m}]
+  (if collection
+    m
+    (if-let [col (some-> criteria
+                         single-ns
+                         plural
+                         keyword)]
+      (assoc m :collection col)
+      (throw (ex-info "Unable to determine the target location for the criteria." m)))))
+
+(defn- calc-stages
+  [{:keys [criteria collection paths] :as m}]
+  (cons (some-> criteria
+                (extract-ns (singular collection))
+                (translate-criteria m)
+                match)
+        (mapcat #(path->stages % criteria m)
+                paths)))
+
+(defn- append-stages
+  [m]
+  (assoc m :stages (calc-stages m)))
+
+(defn- append-count-stage
+  [{:keys [count] :as m}]
+  (if count
+    (update-in m [:stages] #(concat % [{:$count "document_count"}]))
+    m))
 
 (defn criteria->pipeline
   ([criteria] (criteria->pipeline criteria {}))
-  ([criteria {:keys [count collection] :as options}]
-   (let [collection (or collection
-                       (some-> criteria
-                               single-ns
-                               plural
-                               keyword)
-                       (throw (RuntimeException. "Unable to determine the target location for the criteria.")))
-         paths (calc-paths criteria (assoc options :collection collection))
-         first-stage (some-> criteria
-                             (extract-ns (singular collection))
-                             (translate-criteria options)
-                             match)
-         remaining-stages (mapcat #(path->stages % criteria options)
-                                  paths)
-         stages (cons first-stage remaining-stages)]
-     (if count
-       (concat stages [{:$count "document_count"}])
-       stages))))
+  ([criteria options]
+   (-> options
+       (assoc :criteria criteria)
+       ensure-collection
+       append-targets
+       append-paths
+       append-stages
+       append-count-stage
+       :stages)))
