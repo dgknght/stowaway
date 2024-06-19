@@ -91,7 +91,7 @@
                          plural
                          keyword)]
       (assoc m :collection col)
-      (throw (ex-info "Unable to determine the target location for the criteria." m)))))
+      (throw (ex-info "Unable to determine the target collection for the criteria." m)))))
 
 (defn- calc-stages
   [{:keys [criteria collection paths] :as m}]
