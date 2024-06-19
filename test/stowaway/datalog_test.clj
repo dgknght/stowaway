@@ -12,6 +12,15 @@
          (dtl/apply-criteria query
                              #:entity{:name "Personal"}))))
 
+(deftest apply-a-simple-criterion-and-specify-the-entity-var
+  (is (= '{:find [?usr]
+           :where [[?usr :user/first-name ?first-name-in]]
+           :in [?first-name-in]
+           :args ["John"]}
+         (dtl/apply-criteria '{:find [?usr]}
+                             #:user{:first-name "John"}
+                             :vars {:user '?usr}))))
+
 (deftest apply-a-simple-id-criterion
   (is (= '{:find [(pull ?x [*])]
            :where [[?x :entity/name ?name]]

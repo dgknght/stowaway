@@ -57,23 +57,38 @@
                   (name k))
                 suffix))))
 
+(defn- ref-var
+  "Given a simple keyword representing a criteria namespace (model),
+  return a symbol that will be used to reference entities of that
+  type in the query.
+
+  E.g.:
+
+  (ref-var :user) => ?user
+
+  ; with *opts* {:vars {:user ?u}}
+  (ref-var :user) => ?u"
+  [k]
+  {:pre [k
+         (nil? (namespace k))]}
+
+  (let [target (:target *opts*)
+        vars (or (:vars *opts*) {})
+        n (name k)]
+    (or (vars k)
+        (if (or (nil? target)
+                (= target
+                   (keyword n)))
+          '?x
+          (symbol (str "?" n))))))
+
 (defn- param-ref
   "Given an attribute keyword, return a symbol that will represent
   an input value in the query"
   [k]
   (if (id? k)
-    '?x
+    (ref-var k)
     (attr-ref k "-in")))
-
-(defn- ref-var
-  [k]
-  (let [target (:target *opts*)
-        n (namespace k)]
-    (if (or (nil? target)
-            (= target
-               (keyword n)))
-      '?x
-      (symbol (str "?" n)))))
 
 (defn- append-where
   "Appends clauses to an existing where clause.
@@ -91,12 +106,14 @@
   ; then we'd need to bind to the reference without in "-in" suffix.
   ([w k input]
    (append-where w k input nil))
-  ([w k input pred]
+  ([where k input pred]
    (let [attr (attr-ref k)
          assignment-ref (if pred
                           attr
                           input)
-         ref-var (ref-var k)
+         ref-var (ref-var (or (-> k namespace keyword) ; an :id key won't have a namespace. should we allow this?
+                              (:target *opts*)
+                              k))
          assignment (when-not (id? k)
                       [ref-var
                        (remap k)
@@ -105,7 +122,7 @@
                      [(list (symbol (name pred))
                             attr
                             input)])]
-     (concat* w
+     (concat* where
               (filterv identity
                        [assignment
                         predicate])))))
