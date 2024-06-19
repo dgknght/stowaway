@@ -89,6 +89,20 @@
                                                               [:< "2020-02-01"]]}))
       "statements are added directly to the where chain"))
 
+(deftest apply-criteria-with-a-join
+  ; TODO: We need to arrange it so that the most restrictive clauses are first
+  (is (= '{:find [?x]
+           :where [[?x :entity/owner ?owner-in]
+                   [?commodity :commodity/symbol ?symbol-in]
+                   [?commodity :commodity/entity ?x]]
+           :in [?owner-in ?symbol-in]
+           :args [101 "USD"]}
+         (dtl/apply-criteria query
+                             {:entity/owner 101
+                              :commodity/symbol "USD"}
+                             :target :entity
+                             :relationships #{[:entity :commodity]}))))
+
 (deftest apply-a-tuple-matching-criterion
   ; here it's necessary to use the := operator explicitly so that
   ; the query logic doesn't mistake :google for the operator

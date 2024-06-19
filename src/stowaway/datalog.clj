@@ -1,6 +1,9 @@
 (ns stowaway.datalog
   (:require [clojure.spec.alpha :as s]
-            [clojure.pprint :refer [pprint]]))
+            [clojure.pprint :refer [pprint]]
+            [clojure.set :refer [difference]]
+            [stowaway.criteria :as c]
+            [stowaway.graph :as g]))
 
 (def ^:private concat*
   (fnil (comp vec concat) []))
@@ -62,6 +65,16 @@
     '?x
     (attr-ref k "-in")))
 
+(defn- ref-var
+  [k]
+  (let [target (:target *opts*)
+        n (namespace k)]
+    (if (or (nil? target)
+            (= target
+               (keyword n)))
+      '?x
+      (symbol (str "?" n)))))
+
 (defn- append-where
   "Appends clauses to an existing where clause.
 
@@ -83,8 +96,9 @@
          assignment-ref (if pred
                           attr
                           input)
+         ref-var (ref-var k)
          assignment (when-not (id? k)
-                      ['?x
+                      [ref-var
                        (remap k)
                        assignment-ref])
          predicate (when pred
@@ -156,15 +170,53 @@
   `(binding [*opts* (merge *opts* ~opts)]
      ~@body))
 
+(defn- extract-joining-clauses
+  [criteria]
+  (let [namespaces (c/namespaces criteria :as-keywords true)]
+    (when (< 1 (count namespaces))
+      (let [source (or (:target *opts*)
+                       (throw (ex-info "No target specified for criteria."
+                                       {:options *opts*
+                                        :criteria criteria})))
+            targets (difference namespaces #{source})
+            rels (:relationships *opts*)
+            paths (g/shortest-paths source
+                                    targets
+                                    rels)]
+        (mapcat (fn [path]
+                  (->> path
+                       (partition 2 1)
+                       (map (fn [edge]
+                              (let [[parent child] (some rels [edge
+                                                    (reverse edge)])]
+                                [(if (= source child)
+                                   '?x
+                                   (symbol (format "?%s" (name child))))
+                                 (keyword (name child)
+                                          (name parent))
+                                 (if (= source parent)
+                                   '?x
+                                   (symbol (format "?%s" (name parent))))])))))
+                paths)))))
+
+(defn- append-joining-clauses
+  [query criteria]
+  (update-in query
+             (query-key :where)
+             concat
+             (extract-joining-clauses criteria)))
+
 (defn apply-criteria
   [query criteria & {:as opts}]
   {:pre [(or (nil? opts)
              (s/valid? ::options opts))]}
 
   (with-options opts
-    (reduce apply-criterion
-            query
-            criteria)))
+    (append-joining-clauses
+      (reduce apply-criterion
+              query
+              criteria)
+      criteria)))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
