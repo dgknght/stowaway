@@ -190,6 +190,14 @@
      attr
      other-entity-ref]))
 
+(defn- path->join-clauses
+  "Given a path that maps connections between namespaces, return a list
+  of where clauses the join the namespaces."
+  [path source relationships]
+  (->> path
+       (partition 2 1)
+       (map #(edge->join-clause % source relationships))))
+
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
@@ -205,10 +213,7 @@
             paths (g/shortest-paths source
                                     targets
                                     rels)]
-        (mapcat (fn [path]
-                  (->> path
-                       (partition 2 1)
-                       (map #(edge->join-clause % source rels))))
+        (mapcat #(path->join-clauses % source rels)
                 paths)))))
 
 (defn- append-joining-clauses
