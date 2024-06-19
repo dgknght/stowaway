@@ -77,8 +77,8 @@
         n (name k)]
     (or (vars k)
         (if (or (nil? target)
-                (= target
-                   (keyword n)))
+                (= target (keyword n))
+                (= :id k))
           '?x
           (symbol (str "?" n))))))
 
