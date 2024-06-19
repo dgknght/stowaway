@@ -171,6 +171,8 @@
      ~@body))
 
 (defn- extract-joining-clauses
+  "Given a criteria (map or vector) return the where clauses
+  that join the different namespaces."
   [criteria]
   (let [namespaces (c/namespaces criteria :as-keywords true)]
     (when (< 1 (count namespaces))
@@ -200,6 +202,9 @@
                 paths)))))
 
 (defn- append-joining-clauses
+  "Given a datalog query and a criteria (map or vector), when the criteria
+  spans multiple namespaces, return the query with addition where clauses necessary
+  to join the namespaces."
   [query criteria]
   (update-in query
              (query-key :where)
@@ -207,6 +212,8 @@
              (extract-joining-clauses criteria)))
 
 (defn apply-criteria
+  "Given a datalog query and a criteria (map or vector), return
+   the query with additional attributes that match the specified criteria."
   [query criteria & {:as opts}]
   {:pre [(or (nil? opts)
              (s/valid? ::options opts))]}
