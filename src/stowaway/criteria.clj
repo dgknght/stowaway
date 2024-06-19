@@ -6,14 +6,16 @@
 (derive clojure.lang.PersistentArrayMap ::map)
 (derive clojure.lang.PersistentHashMap ::map)
 
-(defmulti namespaces type)
+(defmulti namespaces (fn [c & _] (type c)))
 
 (defmethod namespaces ::map
-  [m]
-  (->> (keys m)
-       (map namespace)
-       (filter identity)
-       (into #{})))
+  [m & {:keys [as-keywords]}]
+  (let [xform (if as-keywords keyword identity)]
+    (->> (keys m)
+         (map (comp xform
+                    namespace))
+         (filter identity)
+         (into #{}))))
 
 (defmethod namespaces ::vector
   [[_oper & criterias]]

@@ -1,11 +1,17 @@
 (ns stowaway.criteria-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [clojure.test :refer [deftest is testing]]
             [stowaway.criteria :as c]))
 
 (deftest extract-namespaces-from-a-criteria-map
-  (is (= #{"user" "order"}
-         (c/namespaces {:user/first-name "John"
-                        :order/purchase-date "2010-01-01"}))))
+  (testing "as strings (default)"
+    (is (= #{"user" "order"}
+           (c/namespaces {:user/first-name "John"
+                          :order/purchase-date "2010-01-01"}))))
+  (testing "as keys"
+    (is (= #{:user :order}
+           (c/namespaces {:user/first-name "John"
+                          :order/purchase-date "2010-01-01"}
+                         :as-keywords true)))))
 
 (deftest extract-namespaces-from-a-criteria-vector
   (is (= #{"user" "order"}
