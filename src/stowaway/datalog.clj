@@ -170,6 +170,26 @@
   `(binding [*opts* (merge *opts* ~opts)]
      ~@body))
 
+(defn- edge->join-clause
+  "Given a graph edge (connection between two namespaces), a source
+  namespace, and a set of relationships, return a where clause that
+  joins the two namespaces."
+  [edge source relationships]
+  (let [[parent child] (some relationships
+                             [edge
+                              (reverse edge)])
+        entity-ref (if (= source child)
+                     '?x
+                     (symbol (format "?%s" (name child))))
+        attr (keyword (name child)
+                      (name parent))
+        other-entity-ref (if (= source parent)
+                           '?x
+                           (symbol (format "?%s" (name parent))))]
+    [entity-ref
+     attr
+     other-entity-ref]))
+
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
@@ -188,17 +208,7 @@
         (mapcat (fn [path]
                   (->> path
                        (partition 2 1)
-                       (map (fn [edge]
-                              (let [[parent child] (some rels [edge
-                                                    (reverse edge)])]
-                                [(if (= source child)
-                                   '?x
-                                   (symbol (format "?%s" (name child))))
-                                 (keyword (name child)
-                                          (name parent))
-                                 (if (= source parent)
-                                   '?x
-                                   (symbol (format "?%s" (name parent))))])))))
+                       (map #(edge->join-clause % source rels))))
                 paths)))))
 
 (defn- append-joining-clauses
