@@ -107,9 +107,10 @@
 
 (deftest convert-criteria-with-a-limit
   (is (= [{:$match {:symbol "USD"
-                    :entity_id "6640ff89b0afbe64479f2feb"}}
+                    :entity_id 101}}
           {:$limit 1}]
          (m/criteria->pipeline {:commodity/symbol "USD",
-                                :commodity/entity {:id "6640ff89b0afbe64479f2feb"}}
+                                :commodity/entity {:id "101"}}
                                {:limit 1
-                                :collection :commodities}))))
+                                :collection :commodities
+                                :coerce-id #(Integer/parseInt %)}))))

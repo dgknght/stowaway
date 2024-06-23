@@ -24,29 +24,29 @@
               one?
               #(= :id (first (keys %)))))
 
-(defmulti ^:private ->mongo-key type)
+(defmulti ^:private ->mongo-key (fn [x & _] (type x)))
 
-(defmethod ->mongo-key :default [x] x)
+(defmethod ->mongo-key :default [x & _] x)
 
 (defmethod ->mongo-key ::s/map
-  [m]
+  [m _]
   (if (contains-mongo-keys? m)
     m
     (update-keys m ->snake_case)))
 
 (defmethod ->mongo-key ::s/map-entry
-  [[_ v :as e]]
+  [[_ v :as e] {:keys [coerce-id]}]
   (if (simple-model-ref? v)
     (-> e
         (update-in [0] #(key-join % "-id"))
-        (update-in [1] :id))
+        (update-in [1] (comp coerce-id :id)))
     e))
 
 ; TODO: I think we need to be smarter about transforming model keys
 ; verses mongo query keys, but this will keep us moving for now
 (defn ->mongo-keys
-  [m]
-  (postwalk ->mongo-key m))
+  [m options]
+  (postwalk #(->mongo-key % options) m))
 
 (def oper-map
   {:> :$gt
@@ -95,16 +95,28 @@
        (map adjust-complex-criterion)
        (into {})))
 
+(def ^:private default-translate-opts
+  {:coerce-id identity})
+
 (defmulti translate-criteria (fn [criteria _] (type criteria)))
 
+; kebab-case keys are translated to snake case
+; {:user/first-name "John"} => {:first_name "John"}
+
+; simple :id attributes a prefixed with the target collection (singularized)
+; {:id 101} => {:user/_id 101}
+
+; model references are convered into forein key names with a simple id value
+; {:user {:id 101}} => {:user_id 101}
 (defmethod translate-criteria ::s/map
-  [criteria {:keys [coerce-id] :or {coerce-id identity}}]
-  (-> criteria
+  [criteria options]
+  (let [{:keys [coerce-id] :as opts} (merge default-translate-opts options)]
+    (-> criteria
         unqualify-keys
-        ->mongo-keys
+        ( ->mongo-keys opts)
         (update-in-if [:id] coerce-id)
         (rename-keys {:id :_id})
-        adjust-complex-criteria))
+        adjust-complex-criteria)))
 
 (defmethod translate-criteria ::s/vector
   [[oper & crits] opts]
