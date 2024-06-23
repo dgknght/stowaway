@@ -112,8 +112,8 @@
   ; TODO: We need to arrange it so that the most restrictive clauses are first
   (is (= '{:find [?x]
            :where [[?x :entity/owner ?owner-in]
-                   [?commodity :commodity/symbol ?symbol-in]
-                   [?commodity :commodity/entity ?x]]
+                   [?commodity :commodity/entity ?x]
+                   [?commodity :commodity/symbol ?symbol-in]]
            :in [?owner-in ?symbol-in]
            :args [101 "USD"]}
          (dtl/apply-criteria query

@@ -243,6 +243,21 @@
              concat
              (extract-joining-clauses criteria)))
 
+(defn- sort-where-clauses
+  "Given a query with a where clause, sort the clauses with the aim of putting
+  the most restrictive clauses first. To achieve this, put entities higher in
+  the relationship hierarchy first."
+  [query {:keys [relationships]}]
+  (update-in query
+             (query-key :where)
+             (fn [clauses]
+               (sort (fn [c1 c2]
+                       (let [ns1 (namespace c1)
+                             ns2 (namespace c2)])
+                       (pprint {::c1 c1 ::c2 c2})
+                       1)
+                     clauses))))
+
 (defn apply-criteria
   "Given a datalog query and a criteria (map or vector), return
    the query with additional attributes that match the specified criteria."
@@ -251,11 +266,11 @@
              (s/valid? ::options opts))]}
 
   (with-options opts
-    (append-joining-clauses
-      (reduce apply-criterion
-              query
-              criteria)
-      criteria)))
+    (-> (reduce apply-criterion
+                query
+                criteria)
+        (append-joining-clauses criteria)
+        (sort-where-clauses opts))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
