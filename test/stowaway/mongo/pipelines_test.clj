@@ -104,3 +104,12 @@
                                 :relationships #{[:users :orders]
                                                  [:orders :order-items]}}))
       "Keys are also converted in joins"))
+
+(deftest convert-criteria-with-a-limit
+  (is (= [{:$match {:symbol "USD"
+                    :entity_id "6640ff89b0afbe64479f2feb"}}
+          {:$limit 1}]
+         (m/criteria->pipeline {:commodity/symbol "USD",
+                                :commodity/entity {:id "6640ff89b0afbe64479f2feb"}}
+                               {:limit 1
+                                :collection :commodities}))))

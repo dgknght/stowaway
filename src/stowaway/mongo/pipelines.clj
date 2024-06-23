@@ -109,7 +109,13 @@
 (defn- append-count-stage
   [{:keys [count] :as m}]
   (if count
-    (update-in m [:stages] #(concat % [{:$count "document_count"}]))
+    (update-in m [:stages] concat [{:$count "document_count"}])
+    m))
+
+(defn- append-limit-stage
+  [{:keys [limit] :as m}]
+  (if limit
+    (update-in m [:stages] concat [{:$limit limit}])
     m))
 
 (defn criteria->pipeline
@@ -121,5 +127,6 @@
        append-targets
        append-paths
        append-stages
+       append-limit-stage
        append-count-stage
        :stages)))
