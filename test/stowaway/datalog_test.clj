@@ -109,7 +109,6 @@
       "statements are added directly to the where chain"))
 
 (deftest apply-criteria-with-a-join
-  ; TODO: We need to arrange it so that the most restrictive clauses are first
   (is (= '{:find [?x]
            :where [[?x :entity/owner ?owner-in]
                    [?commodity :commodity/entity ?x]
@@ -120,7 +119,9 @@
                              {:entity/owner 101
                               :commodity/symbol "USD"}
                              :target :entity
-                             :relationships #{[:entity :commodity]}))))
+                             :relationships #{[:user :entity]
+                                              [:entity :commodity]}
+                             :graph-apex :user))))
 
 (deftest apply-a-tuple-matching-criterion
   ; here it's necessary to use the := operator explicitly so that

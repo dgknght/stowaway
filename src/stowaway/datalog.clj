@@ -2,6 +2,9 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.pprint :refer [pprint]]
             [clojure.set :refer [difference]]
+            [ubergraph.core :as uber]
+            [ubergraph.alg :refer [shortest-path
+                                   nodes-in-path]]
             [stowaway.criteria :as c]
             [stowaway.graph :as g]))
 
@@ -247,16 +250,21 @@
   "Given a query with a where clause, sort the clauses with the aim of putting
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
-  [query {:keys [relationships]}]
-  (update-in query
-             (query-key :where)
-             (fn [clauses]
-               (sort (fn [c1 c2]
-                       (let [ns1 (namespace c1)
-                             ns2 (namespace c2)])
-                       (pprint {::c1 c1 ::c2 c2})
-                       1)
-                     clauses))))
+  [query {:keys [relationships graph-apex]}]
+  (let [graph (apply uber/graph relationships)]
+    (update-in query
+               (query-key :where)
+               (fn [clauses]
+                 (sort (fn [& cs]
+                         (apply compare
+                                (map (comp count
+                                           nodes-in-path
+                                           (partial shortest-path graph graph-apex)
+                                           keyword
+                                           namespace
+                                           second)
+                                     cs)))
+                       clauses)))))
 
 (defn apply-criteria
   "Given a datalog query and a criteria (map or vector), return
