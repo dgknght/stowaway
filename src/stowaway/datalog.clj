@@ -251,18 +251,21 @@
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
   [query {:keys [relationships graph-apex]}]
-  (let [graph (apply uber/graph relationships)]
+  (let [graph (apply uber/graph relationships) ; TODO: Rework this so we're not creating the graph twice
+        entities (->> relationships seq flatten set)
+        shortest #(shortest-path graph graph-apex %)]
     (update-in query
                (query-key :where)
                (fn [clauses]
                  (sort (fn [& cs]
                          (apply compare
-                                (map (comp count
-                                           nodes-in-path
-                                           (partial shortest-path graph graph-apex)
-                                           keyword
-                                           namespace
-                                           second)
+                                (map #(-> %
+                                          second
+                                          namespace
+                                          keyword
+                                          shortest
+                                          nodes-in-path
+                                          count)
                                      cs)))
                        clauses)))))
 
