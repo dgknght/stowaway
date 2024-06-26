@@ -99,8 +99,9 @@
                      :foreignField "_id"}}
           {:$match {:orders.user_id 101}}]
          (m/criteria->pipeline {:order-item/sku "ABC123"
-                                :order/user {:id 101}}
+                                :order/user {:id "101"}}
                                {:collection :order-items
+                                :coerce-id #(Integer/parseInt %)
                                 :relationships #{[:users :orders]
                                                  [:orders :order-items]}}))
       "Keys are also converted in joins"))
