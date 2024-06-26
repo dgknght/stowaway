@@ -246,6 +246,38 @@
              concat
              (extract-joining-clauses criteria)))
 
+(defn- attr->sortable
+  [shortest-path entities]
+  (juxt (comp count
+              nodes-in-path
+              shortest-path
+              keyword
+              namespace)
+        (comp #(if (entities %)
+                 0 1)
+              keyword
+              name)))
+
+(defn- clause->sortable
+  "Given a where clause like [?e :user/first-name ?first-name],
+  extract the attribute at index 1 and return a tuple containing
+  the distance from the apex node in the 1st position and either a 1
+  (if the attribute is an entity reference) or a 0 in the second."
+  [clause shortest-path entities]
+  (if (list? (first clause))
+    [999 0] ; a list is used for arbitrary predicates like comparisons, etc.
+    (let [f (attr->sortable shortest-path entities)]
+      (-> clause
+          second
+          f))))
+
+(defn- compare-where-clauses
+  [shortest-path entities]
+  (fn [& clauses]
+    (apply compare
+           (map #(clause->sortable % shortest-path entities)
+                clauses))))
+
 (defn- sort-where-clauses
   "Given a query with a where clause, sort the clauses with the aim of putting
   the most restrictive clauses first. To achieve this, put entities higher in
@@ -256,18 +288,8 @@
         shortest #(shortest-path graph graph-apex %)]
     (update-in query
                (query-key :where)
-               (fn [clauses]
-                 (sort (fn [& cs]
-                         (apply compare
-                                (map #(-> %
-                                          second
-                                          namespace
-                                          keyword
-                                          shortest
-                                          nodes-in-path
-                                          count)
-                                     cs)))
-                       clauses)))))
+               #(sort (compare-where-clauses shortest entities)
+                      %))))
 
 (defn apply-criteria
   "Given a datalog query and a criteria (map or vector), return
