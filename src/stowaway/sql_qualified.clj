@@ -148,11 +148,19 @@
   (fn [criteria _opts]
     (type criteria)))
 
+(defn- id-key?
+  [k]
+  (= "id" (name k)))
+
 (defmethod ->clauses ::map
-  [criteria opts]
+  [criteria {:as opts
+             :keys [coerce-id]
+             :or {coerce-id identity}}]
   (->> criteria
        (map (fn [e]
-              (update-in e [0] #(->col-ref % opts))))
+              (cond-> e
+                (id-key? (first e)) (update-in [1] coerce-id)
+                true                (update-in [0] #(->col-ref % opts)))))
        (mapcat map-entry->statements)
        seq))
 
