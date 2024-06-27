@@ -56,6 +56,18 @@
                                :where [[?x :entity/name ?name]]}
                              {:id [:!= "101"]}))))
 
+; Common criteria 4: multiple simple equality criteria
+; #:user{:first-name "John"
+;        :age 25}
+(deftest apply-multiple-simple-equality-criteria
+  (is (= '{:find [?x]
+           :where [[?x :user/first-name ?first-name-in]
+                   [?x :user/age ?age-in]]
+           :in [?first-name-in ?age-in]
+           :args ["John" 25]}
+         (dtl/apply-criteria query
+                             #:user{:first-name "John"
+                                    :age 25}))))
 (deftest specify-the-args-key
   (is (= '{:find [?x]
            :where [[?x :entity/name ?name-in]]

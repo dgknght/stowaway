@@ -25,6 +25,15 @@
   (is (= [{:$match {:_id {:$ne "101"}}}]
          (m/criteria->pipeline {:user/id [:!= "101"]}))))
 
+; Common criteria 4: multiple simple equality criteria
+; #:user{:first-name "John"
+;        :age 25}
+(deftest query-multiple-simple-equality-criteria
+  (is (= [{:$match {:first_name "John"
+                    :age 25}}]
+         (m/criteria->pipeline #:user{:first-name "John"
+                                      :age 25}))))
+
 (deftest convert-a-criteria-to-an-aggregation-pipeline
   (testing "upstream join"
     (is (= [{:$match {:purchase_date "2020-01-01"}}

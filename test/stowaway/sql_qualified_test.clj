@@ -70,6 +70,9 @@
           "101"]
          (sql/->query {:user/id [:!= "101"]}))))
 
+; Common criteria 4: multiple simple equality criteria
+; #:user{:first-name "John"
+;        :age 25}
 (deftest query-against-multiple-simple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
           "John"
