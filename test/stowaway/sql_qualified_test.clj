@@ -5,6 +5,8 @@
             [stowaway.geometry :as geo]
             [stowaway.sql-qualified :as sql]))
 
+; Common criteria 1: single field match
+; #:user{:last-name "Doe"}
 (deftest query-a-single-table-with-simple-single-field-equality
   (is (= ["SELECT users.* FROM users WHERE users.last_name = ?" "Doe"]
          (sql/->query #:user{:last-name "Doe"}))))
@@ -48,6 +50,18 @@
                       {:target :user
                        :sort [:user/last-name]
                        :count true})))))
+
+; Common criteria 2: model id
+; {:user/id "101"}
+(deftest query-against-a-simple-id
+  (is (= ["SELECT users.* FROM users WHERE users.id = ?"
+          "101"]
+         (sql/->query {:user/id "101"})))
+  (is (= ["SELECT users.* FROM users WHERE users.id = ?"
+          "101"]
+         (sql/->query {:user/id "101"}
+                      {:coerce-id #(Integer/parseInt %)}))
+      "An id can be coerced"))
 
 (deftest query-against-multiple-simple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"

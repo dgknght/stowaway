@@ -4,13 +4,15 @@
 
 (def ^:private query '{:find [?x]})
 
+; Common criteria 1: single field match
+; #:user{:last-name "Doe"}
 (deftest apply-a-simple-criterion
   (is (= '{:find [?x]
-           :where [[?x :entity/name ?name-in]]
-           :in [?name-in]
-           :args ["Personal"]}
+           :where [[?x :user/last-name ?last-name-in]]
+           :in [?last-name-in]
+           :args ["Doe"]}
          (dtl/apply-criteria query
-                             #:entity{:name "Personal"}))))
+                             #:user{:last-name "Doe"}))))
 
 (deftest apply-a-simple-criterion-and-specify-the-entity-var
   (is (= '{:find [?usr]
@@ -21,6 +23,8 @@
                              #:user{:first-name "John"}
                              :vars {:user '?usr}))))
 
+; Common criteria 2: model id
+; {:id "101"}
 (deftest apply-a-simple-id-criterion
   (testing "with implicit target entity"
     (is (= '{:find [(pull ?x [*])]

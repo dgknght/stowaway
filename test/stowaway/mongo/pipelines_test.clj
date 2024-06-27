@@ -2,6 +2,23 @@
   (:require [clojure.test :refer [deftest is testing]]
             [stowaway.mongo.pipelines :as m]))
 
+; Common criteria 1: single field match
+; #:user{:last-name "Doe"}
+(deftest convert-a-single-field-match-criteria
+  (is (= [{:$match {:last_name "Doe"}}]
+         (m/criteria->pipeline {:user/last-name "Doe"}
+                               {:collection :users}))))
+
+; Common criteria 2: model id
+; {:user/id "101"}
+(deftest query-against-multiple-simple-equality-criteria
+  (is (= [{:$match {:_id "101"}}]
+         (m/criteria->pipeline {:user/id "101"})))
+  (is (= [{:$match {:_id 101}}]
+         (m/criteria->pipeline {:user/id "101"}
+                               {:coerce-id #(Integer/parseInt %)}))
+      "An id can be coerced"))
+
 (deftest convert-a-criteria-to-an-aggregation-pipeline
   (testing "upstream join"
     (is (= [{:$match {:purchase_date "2020-01-01"}}
@@ -30,15 +47,15 @@
 (deftest convert-criteria-into-an-aggregation-pipeline
   (testing "simple map with downstream join"
     (is (= [{:$match {:first_name "John"}}
-          {:$lookup {:from "orders"
-                    :as "orders"
-                    :localField "_id"
-                    :foreignField "user_id"}}
+            {:$lookup {:from "orders"
+                       :as "orders"
+                       :localField "_id"
+                       :foreignField "user_id"}}
             {:$match {:orders.purchase_date "2020-01-01"}}]
-         (m/criteria->pipeline {:order/purchase-date "2020-01-01"
-                                   :user/first-name "John"}
-                                  {:collection :users
-                                   :relationships #{[:users :orders]}}))))
+           (m/criteria->pipeline {:order/purchase-date "2020-01-01"
+                                  :user/first-name "John"}
+                                 {:collection :users
+                                  :relationships #{[:users :orders]}}))))
   ; by "upstream", we mean that the relationship is defined
   ; users -> orders, or a user has many orders and an order belongs
   ; to a user. However, the target collection is :orders, so navigating
