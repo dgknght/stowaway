@@ -44,6 +44,8 @@
                                {:id "101"}
                                :target :entity)))))
 
+; Common criteria 3: query with a predicate
+; {:id [:!= "101"]}
 (deftest apply-id-criterion-with-predicate
   (is (= '{:find [(pull ?x [*])]
            :where [[?x :entity/name ?name]

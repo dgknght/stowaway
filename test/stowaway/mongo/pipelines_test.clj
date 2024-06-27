@@ -11,13 +11,19 @@
 
 ; Common criteria 2: model id
 ; {:user/id "101"}
-(deftest query-against-multiple-simple-equality-criteria
+(deftest query-against-a-simple-id
   (is (= [{:$match {:_id "101"}}]
          (m/criteria->pipeline {:user/id "101"})))
   (is (= [{:$match {:_id 101}}]
          (m/criteria->pipeline {:user/id "101"}
                                {:coerce-id #(Integer/parseInt %)}))
       "An id can be coerced"))
+
+; Common criteria 3: predicate
+; {:user/id [:!= "101"]}
+(deftest query-against-a-predicate
+  (is (= [{:$match {:_id {:$ne "101"}}}]
+         (m/criteria->pipeline {:user/id [:!= "101"]}))))
 
 (deftest convert-a-criteria-to-an-aggregation-pipeline
   (testing "upstream join"

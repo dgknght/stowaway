@@ -58,10 +58,17 @@
           "101"]
          (sql/->query {:user/id "101"})))
   (is (= ["SELECT users.* FROM users WHERE users.id = ?"
-          "101"]
+          101]
          (sql/->query {:user/id "101"}
                       {:coerce-id #(Integer/parseInt %)}))
       "An id can be coerced"))
+
+; Common criteria 3: query with a predicate
+; {:user/id [:!= "101"]}
+(deftest apply-id-criterion-with-predicate
+  (is (= ["SELECT users.* FROM users WHERE users.id <> ?"
+          "101"]
+         (sql/->query {:user/id [:!= "101"]}))))
 
 (deftest query-against-multiple-simple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
