@@ -5,6 +5,7 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.11.3"]
                  [org.clojure/tools.logging "1.3.0"]
+                 [org.clojure/spec.alpha "0.5.238"]
                  [camel-snake-kebab "0.4.3"]
                  [com.github.seancorfield/honeysql "2.6.1126"]
                  [ubergraph "0.9.0" :exclusions [org.clojure/spec.alpha

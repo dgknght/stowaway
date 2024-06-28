@@ -9,8 +9,8 @@
             [stowaway.inflection :refer [plural
                                          singular]]
             [stowaway.graph :as g]
-            [stowaway.criteria :refer [namespaces
-                                       single-ns]]
+            [stowaway.criteria :as c :refer [namespaces
+                                             single-ns]]
             [stowaway.sql :as sql]))
 
 (s/def ::relationship (s/tuple keyword? keyword?))
@@ -267,6 +267,7 @@
 (defn ->query
   "Translate a criteria map into a SQL query"
   [criteria & [{:keys [target named-params skip-format?] :as opts}]]
+  {:pre [(s/valid? ::c/criteria criteria)]}
   (let [target (or target
                    (keyword (single-ns criteria))
                    (throw (IllegalArgumentException. "Unable to determine the query target")))

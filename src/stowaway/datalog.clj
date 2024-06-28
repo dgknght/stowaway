@@ -300,9 +300,10 @@
 
 (defn apply-criteria
   "Given a datalog query and a criteria (map or vector), return
-   the query with additional attributes that match the specified criteria."
+  the query with additional attributes that match the specified criteria."
   [query criteria & {:as opts}]
-  {:pre [(or (nil? opts)
+  {:pre [(s/valid? ::c/criteria criteria)
+         (or (nil? opts)
              (s/valid? ::options opts))]}
 
   (with-options opts

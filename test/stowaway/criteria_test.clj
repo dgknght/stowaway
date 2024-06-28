@@ -1,6 +1,16 @@
 (ns stowaway.criteria-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is testing assert-expr do-report]]
+            [clojure.spec.alpha :as s]
             [stowaway.criteria :as c]))
+
+(defmethod assert-expr 'valid?
+  [msg form]
+  `(let [spec# ~(nth form 1)
+         value# ~(nth form 2)]
+     (do-report {:type (if (s/valid? spec# value#) :pass :fail)
+                 :expected :valid
+                 :actual (s/explain-str spec# value#)
+                 :message ~msg})))
 
 (deftest extract-namespaces-from-a-criteria-map
   (testing "as strings (default)"
@@ -57,3 +67,32 @@
   (is (nil? (c/single-ns {:user/first-name "John"
                           :order/purchase-date "2020-01-01"}))
       "When multiple namespaces are found, nil is returned"))
+
+(deftest validate-a-criteria
+  (is (valid? ::c/criteria {:user/name "John"})
+      "A map with a simple equality check is valid")
+  (is (valid? ::c/criteria {:user/name [:!= "John"]})
+      "A map with a vector specifying a predicate is valid")
+  (is (not (s/valid? ::c/criteria {:user/name ["Jim" "John"]}))
+      "A map with a vector of values is not valid.")
+  (is (valid? ::c/criteria {:user/name [:in ["Jim" "John"]]})
+      "A map with a vector of values wrapped in a vector with a predicate is valid.")
+  (is (valid? ::c/criteria {:order/user {:id 101}})
+      "A map with a simple model/entity reference is valid")
+  (is (not (s/valid? ::c/criteria {:order/user {:first-name "John"}}))
+      "A map with a value that is a map but not a model/entity reference is not valid")
+  (is (valid? ::c/criteria [:or
+                              {:order/user {:id 101}}
+                              {:user/last-name "Doe"}])
+      "A vector starting with :or and containing value criteria maps is valid")
+  (is (not (s/valid? ::c/criteria [:fish
+                                   {:order/user {:id 101}}
+                                   {:user/last-name "Doe"}]))
+      "A vector starting with an unrecognized conjunction is not valid")
+  (is (not (s/valid? ::c/criteria [{:order/user {:id 101}}
+                                   {:user/last-name "Doe"}]))
+      "A vector of maps is not valid")
+  (is (valid? ::c/criteria {})
+      "An empty map is valid")
+  (is (not (s/valid? ::c/criteria []))
+      "An empty vector is valid"))

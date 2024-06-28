@@ -2,7 +2,8 @@
                                            cljs.pprint [pprint]}}
            :unused-namespace {:exclude [clojure.pprint
                                         cljs.pprint]}
-           :unresolved-symbol {:exclude [(stowaway.core/with-storage [s])]}
+           :unresolved-symbol {:exclude [(stowaway.core/with-storage [s])
+                                         (clojure.test/is [valid?])]}
            :clojure-lsp/unused-public-var {:exclude #{stowaway.core/with-storage
                                                       stowaway.core/with-transacted-storage
                                                       stowaway.mongo.queries/criteria->query

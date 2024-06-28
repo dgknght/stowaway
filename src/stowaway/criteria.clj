@@ -1,10 +1,62 @@
 (ns stowaway.criteria
   (:require [clojure.pprint :refer [pprint]]
+            [clojure.spec.alpha :as s]
             [clojure.set :refer [union]]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
 (derive clojure.lang.PersistentHashMap ::map)
+
+(defmulti ^:private criteria-value type)
+
+(s/def ::conjunction #{:or :and})
+
+(s/def ::predicate #{:or
+                     :and
+                     :in
+                     :any
+                     :&&
+                     :=
+                     :>
+                     :>=
+                     :<
+                     :<=
+                     :!=
+                     :like
+                     :between
+                     :between>
+                     :<between
+                     :<between>
+                     :contained-by})
+
+(defmethod criteria-value :default
+  [_]
+  (s/spec any?))
+
+(defmethod criteria-value ::map
+  [_]
+  (s/map-of #(= :id %)
+            ::criteria-value))
+
+(defmethod criteria-value ::vector
+  [_]
+  (s/cat
+    :predicate ::predicate
+    :rest      (s/+ any?)))
+
+(s/def ::criteria-value (s/multi-spec criteria-value type))
+
+(defmulti ^:private criteria type)
+
+(defmethod criteria ::map
+  [_]
+  (s/map-of keyword? ::criteria-value))
+
+(defmethod criteria ::vector
+  [_]
+  (s/tuple ::conjunction ::criteria ::criteria)) ; TODO: How to allow more than two?
+
+(s/def ::criteria (s/multi-spec criteria type))
 
 (defmulti namespaces (fn [c & _] (type c)))
 

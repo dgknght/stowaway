@@ -1,12 +1,13 @@
 (ns stowaway.mongo.pipelines
   (:require [clojure.pprint :refer [pprint]]
+            [clojure.spec.alpha :as s]
             [camel-snake-kebab.core :refer [->snake_case_keyword]]
             [stowaway.graph :as g]
             [stowaway.inflection :refer [singular
                                          plural]]
-            [stowaway.criteria :refer [namespaces
-                                       extract-ns
-                                       single-ns]]
+            [stowaway.criteria :as c :refer [namespaces
+                                             extract-ns
+                                             single-ns]]
             [stowaway.mongo :refer [translate-criteria]]))
 
 (defn- extract-collections
@@ -121,6 +122,7 @@
 (defn criteria->pipeline
   ([criteria] (criteria->pipeline criteria {}))
   ([criteria options]
+   {:pre [(s/valid? ::c/criteria criteria)]}
    (-> options
        (assoc :criteria criteria)
        ensure-collection

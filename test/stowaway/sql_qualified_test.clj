@@ -80,7 +80,7 @@
          (sql/->query #:user{:first-name "John"
                              :age 25}))))
 
-; Common criteria 5: multiple simple equality criteria
+; Common criteria 5: model reference
 ; {:order/user {:id 101}}
 (deftest query-against-criteria-with-a-model-reference
   (is (= ["SELECT orders.* FROM orders WHERE orders.user_id = ?"
@@ -207,6 +207,7 @@
                                 [:= :transactions.transaction_date :attachments.transaction_date]]}}))))
 
 (deftest query-against-a-point
-  (is (= ["SELECT locations.* FROM locations WHERE ? @> locations.center" (geo/->Circle (geo/->Point 2 2) 3)]
+  (is (= ["SELECT locations.* FROM locations WHERE ? @> locations.center"
+          (geo/->Circle (geo/->Point 2 2) 3)]
          (sql/->query {:location/center [:contained-by :?geoloc]}
                       {:named-params {:geoloc (geo/->Circle (geo/->Point 2 2) 3)}}))))
