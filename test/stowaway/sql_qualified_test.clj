@@ -87,6 +87,16 @@
           101]
          (sql/->query {:order/user {:id 101}}))))
 
+; Common criteria 6: subquery against attributes
+; {:user/identity [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
+(deftest query-against-subquery-criteria
+  (is (= ["SELECT users.* FROM users WHERE id IN (SELECT identities.user_id FROM identities WHERE (identities.oauth_provider = ?) AND (identities.oauth_id = ?))"
+          "google"
+          "abc123"]
+         (sql/->query {:user/identity [:including
+                                       #:identity{:oauth-provider "google"
+                                                  :oauth-id "abc123"}]}))))
+
 (deftest query-against-a-union-of-multiple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.age = ?)"
           "John"

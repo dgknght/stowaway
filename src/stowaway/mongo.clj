@@ -5,6 +5,7 @@
             [clojure.pprint :refer [pprint]]
             [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.core :as s]
+            [stowaway.inflection :refer [plural]]
             [stowaway.util :refer [unqualify-keys
                                    update-in-if
                                    key-join]]))
@@ -53,7 +54,8 @@
    :>= :$gte
    :< :$lt
    :<= :$lte
-   :!= :$ne})
+   :!= :$ne
+   :including :$elemMatch})
 
 (defn ->mongo-operator
   [op]
@@ -66,16 +68,19 @@
     (when (vector? v)
       (let [[oper] v]
         (or (#{:and :or} oper)
-            (when (oper-map oper) :comparison)
+            (when (oper-map oper) :translate-oper)
             (first v))))))
 
 (defmethod adjust-complex-criterion :default [c] c)
 
-(defmethod adjust-complex-criterion :comparison
+(defmethod adjust-complex-criterion :translate-oper
   [[f [op v]]]
   ; e.g. [:transaction-date [:< #inst "2020-01-01"]]
   ; ->   [:transaction-date {:$lt #inst "2020-01-01"}]
-  {f {(->mongo-operator op) v}})
+  {(if (= :including op)
+     (-> f name plural keyword)
+     f)
+   {(->mongo-operator op) v}})
 
 (defmethod adjust-complex-criterion :and
   [[f [_ & cs]]]

@@ -9,6 +9,7 @@
             [stowaway.inflection :refer [plural
                                          singular]]
             [stowaway.graph :as g]
+            [stowaway.core :as stow]
             [stowaway.criteria :as c :refer [namespaces
                                              single-ns]]
             [stowaway.sql :as sql]))
@@ -16,10 +17,6 @@
 (s/def ::relationship (s/tuple keyword? keyword?))
 (s/def ::relationships (s/coll-of ::relationship :min-count 1))
 (s/def ::joins (s/map-of ::relationship vector?))
-
-(derive clojure.lang.PersistentVector ::vector)
-(derive clojure.lang.PersistentArrayMap ::map)
-(derive clojure.lang.PersistentHashMap ::map)
 
 (def apply-limit sql/apply-limit)
 (def apply-offset sql/apply-offset)
@@ -86,7 +83,7 @@
        (list? (second expr))))
 
 (defmulti ^:private map-entry->statements
-  (fn [[_k v]]
+  (fn [[_k v :as e]]
     (if (subquery? v)
       ::subquery
       (type v))))
@@ -95,50 +92,56 @@
   [[k v]]
   [[:= k v]])
 
-(defmethod map-entry->statements ::vector
+(declare ->query)
+
+(defmethod map-entry->statements ::stow/vector
   [[k [oper & [v1 v2 :as values]]]]
   (case oper
 
-      (:= :> :>= :<= :< :<> :!= :like)
-      [[oper k v1]]
+    (:= :> :>= :<= :< :<> :!= :like)
+    [[oper k v1]]
 
-      :between
-      [[:>= k v1]
-       [:<= k v2]]
+    :between
+    [[:>= k v1]
+     [:<= k v2]]
 
-      :between>
-      [[:>= k v1]
-       [:< k v2]]
+    :between>
+    [[:>= k v1]
+     [:< k v2]]
 
-      :<between
-      [[:> k v1]
-       [:<= k v2]]
+    :<between
+    [[:> k v1]
+     [:<= k v2]]
 
-      :<between>
-      [[:> k v1]
-       [:< k v2]]
+    :<between>
+    [[:> k v1]
+     [:< k v2]]
 
-      :in
-      [(apply vector :in k values)]
+    :in
+    [(apply vector :in k values)]
 
-      (:and :or)
-      [(apply vector oper (->> values
-                               (interleave (repeat k))
-                               (partition 2)
-                               (mapcat map-entry->statements)))]
+    (:and :or)
+    [(apply vector oper (->> values
+                             (interleave (repeat k))
+                             (partition 2)
+                             (mapcat map-entry->statements)))]
 
-      :contained-by
-      [[(keyword "@>") v1 k]]
+    :contained-by
+    [[(keyword "@>") v1 k]]
 
-      :any
-      [[:= v1 [:any k]]]
+    :any
+    [[:= v1 [:any k]]]
 
-      :&&
-      [[oper (postgres-array v1) k]]
+    :&&
+    [[oper (postgres-array v1) k]]
 
-      [(apply vector :in k values)]))
+    :including
+    [[:in (keyword (namespace k) "id")
+      (assoc (->query v1 {:skip-format? true})
+             :select [(keyword (plural (single-ns v1))
+                               (str (singular (first (str/split (name k) #"\."))) "_id"))])]]
 
-(declare ->query)
+    [(apply vector :in k values)]))
 
 (defmethod map-entry->statements ::subquery
   [[k [_ [criteria opts]]]]
@@ -172,7 +175,7 @@
   [e opts]
   (update-in e [0] #(->col-ref % opts)))
 
-(defmethod ->clauses ::map
+(defmethod ->clauses ::stow/map
   [criteria opts]
   (->> criteria
        (map (comp #(normalize-col-ref % opts)
@@ -183,7 +186,7 @@
 
 (declare ->where)
 
-(defmethod ->clauses ::vector
+(defmethod ->clauses ::stow/vector
   [[oper & criterias] opts]
   [(apply vector oper (map #(->where % opts) criterias))])
 

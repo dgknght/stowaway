@@ -40,6 +40,15 @@
   (is (= [{:$match {:user_id 101}}]
          (m/criteria->pipeline {:order/user {:id 101}}))))
 
+; Common criteria 6: subquery against attributes
+; {:user/identity [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
+(deftest query-against-subquery-criteria
+  (is (= [{:$match {:identities {:$elemMatch {:oauth_provider "google"
+                                              :oauth_id "abc123"}}}}]
+         (m/criteria->pipeline {:user/identity [:including
+                                                #:identity{:oauth-provider "google"
+                                                           :oauth-id "abc123"}]}))))
+
 (deftest convert-a-criteria-to-an-aggregation-pipeline
   (testing "upstream join"
     (is (= [{:$match {:purchase_date "2020-01-01"}}

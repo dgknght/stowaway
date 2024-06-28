@@ -45,7 +45,8 @@
                       :=                  :direct
                       (:< :<= :> :>= :!=) :binary-pred
                       :and                :intersection
-                      :or                 :union)))))
+                      :or                 :union
+                      :including          :entity-match)))))
 
 (defn- id?
   "Returns true if the given keyword specifies an entity id"
@@ -186,6 +187,18 @@
                                [(list (-> oper name symbol)
                                        attr-ref
                                        input-ref)]))))))))
+
+(defmethod apply-criterion :entity-match
+  [query [k [_ match]]]
+  (let [other-ent-ref (symbol (str "?" (name k)))]
+    (reduce (fn [q [k v]]
+              (let [val-in (param-ref k)]
+                (-> q
+                    (update-in (query-key :where) conj [other-ent-ref k val-in])
+                    (update-in (query-key :in) conj* val-in)
+                    (update-in (args-key) conj* v))))
+            (update-in query (query-key :where) conj* ['?x (remap k) other-ent-ref])
+            match)))
 
 (s/def ::args-key (s/coll-of keyword? :kind vector?))
 (s/def ::query-prefix (s/coll-of keyword :kind vector?))
