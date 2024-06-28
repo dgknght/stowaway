@@ -152,15 +152,32 @@
   [k]
   (= "id" (name k)))
 
+(defn- normalize-model-ref
+  [[_ v :as e]]
+  (if (and (map? v)
+           (:id v))
+    (-> e
+        (update-in [0] #(keyword (namespace %) (str (name %) "_id")))
+        (update-in [1] :id))
+    e))
+
+(defn- coerce-id-value
+  [[k :as e] {:keys [coerce-id]
+              :or {coerce-id identity}}]
+  (if (id-key? k)
+    (update-in e [1] coerce-id)
+    e))
+
+(defn- normalize-col-ref
+  [e opts]
+  (update-in e [0] #(->col-ref % opts)))
+
 (defmethod ->clauses ::map
-  [criteria {:as opts
-             :keys [coerce-id]
-             :or {coerce-id identity}}]
+  [criteria opts]
   (->> criteria
-       (map (fn [e]
-              (cond-> e
-                (id-key? (first e)) (update-in [1] coerce-id)
-                true                (update-in [0] #(->col-ref % opts)))))
+       (map (comp #(normalize-col-ref % opts)
+                  #(coerce-id-value % opts)
+                  normalize-model-ref))
        (mapcat map-entry->statements)
        seq))
 

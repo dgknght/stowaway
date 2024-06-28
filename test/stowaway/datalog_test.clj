@@ -68,6 +68,17 @@
          (dtl/apply-criteria query
                              #:user{:first-name "John"
                                     :age 25}))))
+
+; Common criteria 5: model reference
+; {:order/user {:id 101}}
+(deftest query-against-criteria-with-a-model-reference
+  (is (= '{:find [?x]
+           :where [[?x :order/user ?user-in]]
+           :in [?user-in]
+           :args [101]}
+         (dtl/apply-criteria query
+                             {:order/user {:id 101}}))))
+
 (deftest specify-the-args-key
   (is (= '{:find [?x]
            :where [[?x :entity/name ?name-in]]

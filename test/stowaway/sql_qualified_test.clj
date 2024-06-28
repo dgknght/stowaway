@@ -80,6 +80,13 @@
          (sql/->query #:user{:first-name "John"
                              :age 25}))))
 
+; Common criteria 5: multiple simple equality criteria
+; {:order/user {:id 101}}
+(deftest query-against-criteria-with-a-model-reference
+  (is (= ["SELECT orders.* FROM orders WHERE orders.user_id = ?"
+          101]
+         (sql/->query {:order/user {:id 101}}))))
+
 (deftest query-against-a-union-of-multiple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.age = ?)"
           "John"

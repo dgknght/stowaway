@@ -36,13 +36,16 @@
   (concat (:query-prefix *opts*) ks))
 
 (defmulti apply-criterion
-  (fn [_query [_k v]]
-    (when (vector? v)
-      (case (first v)
-        :=                  :direct
-        (:< :<= :> :>= :!=) :binary-pred
-        :and                :intersection
-        :or                 :union))))
+  (fn [_query c]
+    {:pre [(vector? c)]}
+    (let [[_k v] c]
+      (cond
+        (map? v)    :model-ref
+        (vector? v) (case (first v)
+                      :=                  :direct
+                      (:< :<= :> :>= :!=) :binary-pred
+                      :and                :intersection
+                      :or                 :union)))))
 
 (defn- id?
   "Returns true if the given keyword specifies an entity id"
@@ -141,6 +144,10 @@
 (defmethod apply-criterion :default
   [query [k v]]
   (apply-simple-criterion query k v))
+
+(defmethod apply-criterion :model-ref
+  [query c]
+  (apply-criterion query (update-in c [1] :id)))
 
 (defmethod apply-criterion :direct
   [query [k [_oper v]]]

@@ -34,6 +34,12 @@
          (m/criteria->pipeline #:user{:first-name "John"
                                       :age 25}))))
 
+; Common criteria 5: model reference
+; {:order/user {:id 101}}
+(deftest query-against-criteria-with-a-model-reference
+  (is (= [{:$match {:user_id 101}}]
+         (m/criteria->pipeline {:order/user {:id 101}}))))
+
 (deftest convert-a-criteria-to-an-aggregation-pipeline
   (testing "upstream join"
     (is (= [{:$match {:purchase_date "2020-01-01"}}
