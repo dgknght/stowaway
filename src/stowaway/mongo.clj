@@ -25,29 +25,29 @@
               one?
               #(= :id (first (keys %)))))
 
-(defmulti ^:private ->mongo-key (fn [x & _] (type x)))
+(defmulti ^:private mongoize (fn [x & _] (type x)))
 
-(defmethod ->mongo-key :default [x & _] x)
+(defmethod mongoize :default [x & _] x)
 
-(defmethod ->mongo-key ::s/map
+(defmethod mongoize ::s/map
   [m _]
   (if (contains-mongo-keys? m)
     m
     (update-keys m ->snake_case)))
 
-(defmethod ->mongo-key ::s/map-entry
+(defmethod mongoize ::s/map-entry
   [[_ v :as e] {:keys [coerce-id]}]
   (if (simple-model-ref? v)
     (-> e
-        (update-in [0] #(key-join % "-id"))
+        (update-in [0] #(key-join % "_id"))
         (update-in [1] (comp coerce-id :id)))
     e))
 
 ; TODO: I think we need to be smarter about transforming model keys
 ; verses mongo query keys, but this will keep us moving for now
-(defn ->mongo-keys
+(defn mongoize-criteria
   [m options]
-  (postwalk #(->mongo-key % options) m))
+  (postwalk #(mongoize % options) m))
 
 (def oper-map
   {:> :$gt
@@ -68,12 +68,12 @@
     (when (vector? v)
       (let [[oper] v]
         (or (#{:and :or} oper)
-            (when (oper-map oper) :translate-oper)
+            (when (oper-map oper) :operator-swap)
             (first v))))))
 
 (defmethod adjust-complex-criterion :default [c] c)
 
-(defmethod adjust-complex-criterion :translate-oper
+(defmethod adjust-complex-criterion :operator-swap
   [[f [op v]]]
   ; e.g. [:transaction-date [:< #inst "2020-01-01"]]
   ; ->   [:transaction-date {:$lt #inst "2020-01-01"}]
@@ -118,7 +118,7 @@
   (let [{:keys [coerce-id] :as opts} (merge default-translate-opts options)]
     (-> criteria
         unqualify-keys
-        ( ->mongo-keys opts)
+        (mongoize-criteria opts)
         (update-in-if [:id] coerce-id)
         (rename-keys {:id :_id})
         adjust-complex-criteria)))
