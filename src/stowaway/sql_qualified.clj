@@ -83,7 +83,7 @@
        (list? (second expr))))
 
 (defmulti ^:private map-entry->statements
-  (fn [[_k v :as e]]
+  (fn [[_k v]]
     (if (subquery? v)
       ::subquery
       (type v))))
