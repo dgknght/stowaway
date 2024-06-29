@@ -78,7 +78,7 @@
   ; e.g. [:transaction-date [:< #inst "2020-01-01"]]
   ; ->   [:transaction-date {:$lt #inst "2020-01-01"}]
   {(if (= :including op)
-     (-> f name plural keyword)
+     (-> f name keyword) ; we're expecting this to be plural already
      f)
    {(->mongo-operator op) v}})
 

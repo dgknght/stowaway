@@ -80,7 +80,7 @@
                              {:order/user {:id 101}}))))
 
 ; Common criteria 6: subquery against attributes
-; {:user/identity [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
+; {:user/identities [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
 (deftest query-against-subquery-criteria
   (is (= '{:find [?x]
            :where [[?x :user/identity ?identity]
@@ -89,9 +89,9 @@
            :in [?oauth-provider-in ?oauth-id-in]
            :args ["google" "abc123"]}
          (dtl/apply-criteria query
-                             {:user/identity [:including
-                                              #:identity{:oauth-provider "google"
-                                                         :oauth-id "abc123"}]}))))
+                             {:user/identities [:including
+                                                #:identity{:oauth-provider "google"
+                                                           :oauth-id "abc123"}]}))))
 
 (deftest specify-the-args-key
   (is (= '{:find [?x]

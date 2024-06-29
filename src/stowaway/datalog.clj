@@ -5,6 +5,7 @@
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
+            [stowaway.inflection :refer [singular]]
             [stowaway.criteria :as c]
             [stowaway.graph :as g]))
 
@@ -190,14 +191,15 @@
 
 (defmethod apply-criterion :entity-match
   [query [k [_ match]]]
-  (let [other-ent-ref (symbol (str "?" (name k)))]
+  (let [other-ent-ref (symbol (str "?" (singular (name k))))
+        attr (keyword (namespace k) (singular (name k)))]
     (reduce (fn [q [k v]]
-              (let [val-in (param-ref k)]
+              (let [val-in (symbol (str "?" (name k) "-in"))]
                 (-> q
                     (update-in (query-key :where) conj [other-ent-ref k val-in])
                     (update-in (query-key :in) conj* val-in)
                     (update-in (args-key) conj* v))))
-            (update-in query (query-key :where) conj* ['?x (remap k) other-ent-ref])
+            (update-in query (query-key :where) conj* ['?x (remap attr) other-ent-ref])
             match)))
 
 (s/def ::args-key (s/coll-of keyword? :kind vector?))
