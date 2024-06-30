@@ -21,7 +21,7 @@
            :args ["John"]}
          (dtl/apply-criteria '{:find [?usr]}
                              #:user{:first-name "John"}
-                             :vars {:user '?usr}))))
+                             {:vars {:user '?usr}}))))
 
 ; Common criteria 2: model id
 ; {:id "101"}
@@ -42,7 +42,7 @@
            (dtl/apply-criteria '{:find [(pull ?x [*])]
                                  :where [[?x :entity/name ?name]]}
                                {:id "101"}
-                               :target :entity)))))
+                               {:target :entity})))))
 
 ; Common criteria 3: query with a predicate
 ; {:id [:!= "101"]}
@@ -102,14 +102,47 @@
                                {:user/identities [:including
                                                   ["google" "abc123"]]})))))
 
-(deftest specify-the-args-key
+; Common criteria 7: "and" conjunction
+; [:and {:user/first-name "John"} {:user/age 25}]
+(deftest query-against-an-and-conjunction
   (is (= '{:find [?x]
-           :where [[?x :entity/name ?name-in]]
-           :in [?name-in]
-           :mny/args ["Personal"]}
+           :where [[?x :user/first-name ?first-name-in]
+                   [?x :user/age ?age-in]]
+           :in [?first-name-in ?age-in]
+           :args ["John" 25]}
          (dtl/apply-criteria query
-                             #:entity{:name "Personal"}
-                             :args-key [:mny/args]))))
+                             [:and
+                              {:user/first-name "John"}
+                              {:user/age 25}]))))
+
+; Common criteria 8: "and" conjunction
+; [:and {:user/first-name "John"} {:user/age 25}]
+(deftest query-against-an-or-conjunction
+  (is (= '{:find [?x]
+           :where (or [?x :user/first-name ?first-name-in]
+                      [?x :user/age ?age-in])
+           :in [?first-name-in ?age-in]
+           :args ["John" 25]}
+         (dtl/apply-criteria query
+                             [:or
+                              {:user/first-name "John"}
+                              {:user/age 25}]))))
+
+; Common criteria 9: complex conjunction
+; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
+(deftest query-against-a-complex-conjunction
+  (is (= '{:find [?x]
+           :where (and (or [?x :user/first-name ?first-name-in]
+                           [?x :user/age ?age-in])
+                       [?x :user/last-name ?last-name-in])
+           :in [?first-name-in ?age-in ?last-name-in]
+           :args ["John" 25 "Doe"]}
+         (dtl/apply-criteria query
+                             [:and
+                              [:or
+                               {:user/first-name "John"}
+                               {:user/age 25}]
+                              {:user/last-name "Doe"}]))))
 
 (deftest specify-the-query-key-prefix
   (is (= {:query '{:find [?x]
@@ -118,7 +151,7 @@
           :args ["Personal"]}
          (dtl/apply-criteria {:query query}
                              #:entity{:name "Personal"}
-                             :query-prefix [:query]))))
+                             {:query-prefix [:query]}))))
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
@@ -127,7 +160,7 @@
            :args [123]}
          (dtl/apply-criteria query
                              {:id 123}
-                             :remap {:id :xt/id}))))
+                             {:remap {:id :xt/id}}))))
 
 (deftest apply-a-comparison-criterion
   (is (= '{:find [?x]
@@ -170,10 +203,10 @@
          (dtl/apply-criteria query
                              {:entity/owner 101
                               :commodity/symbol "USD"}
-                             :target :entity
-                             :relationships #{[:user :entity]
-                                              [:entity :commodity]}
-                             :graph-apex :user))))
+                             {:target :entity
+                              :relationships #{[:user :entity]
+                                               [:entity :commodity]}
+                              :graph-apex :user}))))
 
 (deftest apply-a-tuple-matching-criterion
   ; here it's necessary to use the := operator explicitly so that

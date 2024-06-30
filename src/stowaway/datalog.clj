@@ -5,6 +5,7 @@
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
+            [stowaway.core :as stow]
             [stowaway.inflection :refer [singular]]
             [stowaway.criteria :as c]
             [stowaway.graph :as g]))
@@ -322,20 +323,43 @@
                #(sort (compare-where-clauses shortest entities)
                       %))))
 
-(defn apply-criteria
+(defmulti apply-criteria
   "Given a datalog query and a criteria (map or vector), return
   the query with additional attributes that match the specified criteria."
-  [query criteria & {:as opts}]
-  {:pre [(s/valid? ::c/criteria criteria)
-         (or (nil? opts)
-             (s/valid? ::options opts))]}
+  (fn [_query criteria & [opts]]
+    {:pre [(s/valid? ::c/criteria criteria)
+           (s/valid? (s/nilable ::options) opts)]}
+    (type criteria)))
 
+(defmethod apply-criteria ::stow/map
+  [query criteria & [opts]]
   (with-options opts
     (-> (reduce apply-criterion
                 query
                 criteria)
         (append-joining-clauses criteria)
         (sort-where-clauses opts))))
+
+(defn- merge-queries
+  [conj queries]
+  (reduce (fn [q1 q2]
+            (reduce (fn [q [k v]]
+                      (update-in q [k] (if (= :where k)
+                                         #(cons (symbol conj)
+                                                (into v %))
+                                         #(concat % v))))
+                    (or q1 {})
+                    (seq (dissoc q2 :find))))
+          queries))
+
+(defmethod apply-criteria ::stow/vector
+  [query [conj & cs] & [opts]]
+  (if (and (= :and conj)
+           (every? map? cs))
+    (apply-criteria query (apply merge cs) opts)
+    (->> cs
+         (map #(apply-criteria query % opts))
+         (merge-queries conj))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]

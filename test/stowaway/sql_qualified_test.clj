@@ -97,6 +97,18 @@
                                          #:identity{:oauth-provider "google"
                                                     :oauth-id "abc123"}]}))))
 
+; Common criteria 7: "and" conjunction
+; [:and {:user/first-name "John"} {:user/age 25}]
+(deftest query-against-an-and-conjunction
+  (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
+          "John"
+          25]
+         (sql/->query [:and
+                       {:user/first-name "John"}
+                       {:user/age 25}]))))
+
+; Common criteria 8: "or" conjunction
+; [:or {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-a-union-of-multiple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.age = ?)"
           "John"
@@ -104,6 +116,19 @@
          (sql/->query [:or
                        {:user/first-name "John"}
                        {:user/age 25}]))))
+
+; Common criteria 9: complex conjunction
+; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
+(deftest query-against-a-complex-conjunction
+  (is (= ["SELECT users.* FROM users WHERE ((users.first_name = ?) OR (users.age = ?)) AND (users.last_name = ?)"
+          "John"
+          25
+          "Doe"]
+         (sql/->query [:and
+                       [:or
+                        {:user/first-name "John"}
+                        {:user/age 25}]
+                       {:user/last-name "Doe"}]))))
 
 (deftest query-against-a-union-of-values-for-a-single-field
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.first_name = ?)"

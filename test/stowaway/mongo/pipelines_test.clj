@@ -49,6 +49,36 @@
                                                   #:identity{:oauth-provider "google"
                                                              :oauth-id "abc123"}]}))))
 
+; Common criteria 7: "and" conjunction
+; [:and {:user/first-name "John"} {:user/age 25}]
+(deftest query-against-an-and-conjunction
+  (is (= [{:$match {:first_name "John"
+                    :age 25}}]
+         (m/criteria->pipeline [:and
+                                {:user/first-name "John"}
+                                {:user/age 25}]))))
+
+; Common criteria 8: "or" conjunction
+; [:or {:user/first-name "John"} {:user/age 25}]
+(deftest query-against-an-and-conjunction
+  (is (= [{:$match {:$or [{:first_name "John"}
+                          {:age 25}]}}]
+         (m/criteria->pipeline [:or
+                                {:user/first-name "John"}
+                                {:user/age 25}]))))
+
+; Common criteria 9: complex conjunction
+; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
+(deftest query-against-a-complex-conjunction
+  (is (= [{:$match {:and [{:$or [{:first_name "John"}
+                                 {:age 25}]}
+                          {:last_name "Doe"}]}}]
+         (m/criteria->pipeline [:and
+                                [:or
+                                 {:user/first-name "John"}
+                                 {:user/age 25}]
+                                {:user/last-name "Doe"}]))))
+
 (deftest convert-a-criteria-to-an-aggregation-pipeline
   (testing "upstream join"
     (is (= [{:$match {:purchase_date "2020-01-01"}}
