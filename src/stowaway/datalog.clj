@@ -189,18 +189,27 @@
                                        attr-ref
                                        input-ref)]))))))))
 
-(defmethod apply-criterion :entity-match
-  [query [k [_ match]]]
-  (let [other-ent-ref (symbol (str "?" (singular (name k))))
-        attr (keyword (namespace k) (singular (name k)))]
+(defn- apply-map-match
+  [query k match]
+  (let [other-ent-ref (symbol (str "?" (singular (name k))))]
     (reduce (fn [q [k v]]
               (let [val-in (symbol (str "?" (name k) "-in"))]
                 (-> q
                     (update-in (query-key :where) conj [other-ent-ref k val-in])
                     (update-in (query-key :in) conj* val-in)
                     (update-in (args-key) conj* v))))
-            (update-in query (query-key :where) conj* ['?x (remap attr) other-ent-ref])
+            (update-in query (query-key :where) conj* ['?x (remap k) other-ent-ref])
             match)))
+
+(defn- apply-tuple-match
+  [query k match]
+  (apply-simple-criterion query k match))
+
+(defmethod apply-criterion :entity-match
+  [query [k [_ match]]]
+  (cond
+    (map? match)    (apply-map-match query k match)
+    (vector? match) (apply-tuple-match query k match)))
 
 (s/def ::args-key (s/coll-of keyword? :kind vector?))
 (s/def ::query-prefix (s/coll-of keyword :kind vector?))
