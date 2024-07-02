@@ -340,14 +340,29 @@
         (append-joining-clauses criteria)
         (sort-where-clauses opts))))
 
+(defn- merge-where-clauses
+  [conj w v]
+  (cons (symbol conj)
+        (if (symbol? (first v))
+          (if (symbol? (first w))
+            [w v]
+            (apply list v w))
+          (if (symbol? (first w))
+            (concat v [w])
+            (concat w v)))))
+
+(defn- merge-query-attrs
+  [conj query [k v]]
+  (update-in query
+             [k]
+             (if (= :where k)
+               #(merge-where-clauses conj % v)
+               #(concat % v))))
+
 (defn- merge-queries
   [conj queries]
   (reduce (fn [q1 q2]
-            (reduce (fn [q [k v]]
-                      (update-in q [k] (if (= :where k)
-                                         #(cons (symbol conj)
-                                                (into v %))
-                                         #(concat % v))))
+            (reduce (partial merge-query-attrs conj)
                     (or q1 {})
                     (seq (dissoc q2 :find))))
           queries))

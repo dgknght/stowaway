@@ -132,9 +132,9 @@
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
 (deftest query-against-a-complex-conjunction
   (is (= '{:find [?x]
-           :where (and (or [?x :user/first-name ?first-name-in]
-                           [?x :user/age ?age-in])
-                       [?x :user/last-name ?last-name-in])
+           :where (and [?x :user/last-name ?last-name-in]
+                       (or [?x :user/first-name ?first-name-in]
+                           [?x :user/age ?age-in]))
            :in [?first-name-in ?age-in ?last-name-in]
            :args ["John" 25 "Doe"]}
          (dtl/apply-criteria query
