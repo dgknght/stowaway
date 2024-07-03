@@ -52,11 +52,17 @@
 ; Common criteria 7: "and" conjunction
 ; [:and {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-an-and-conjunction
-  (is (= [{:$match {:first_name "John"
-                    :age 25}}]
-         (m/criteria->pipeline [:and
-                                {:user/first-name "John"}
-                                {:user/age 25}]))))
+  (testing "a redundant and"
+    (is (= [{:$match {:first_name "John"
+                      :age 25}}]
+           (m/criteria->pipeline [:and
+                                  {:user/first-name "John"}
+                                  {:user/age 25}]))))
+  (testing "unmatchable and"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unmatchable criteria"
+                          (m/criteria->pipeline [:and
+                                                 {:user/first-name "John"}
+                                                 {:user/first-name "Jane"}])))))
 
 ; Common criteria 8: "or" conjunction
 ; [:or {:user/first-name "John"} {:user/age 25}]

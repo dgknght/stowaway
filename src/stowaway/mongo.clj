@@ -124,7 +124,16 @@
         (rename-keys {:id :_id})
         adjust-complex-criteria)))
 
+(defn- throw-on-dup-key
+  [v1 v2]
+  (throw (ex-info "Unmatchable criteria" {:value-1 v1
+                                          :value-2 v2})))
+
 (defmethod translate-criteria ::s/vector
   [[oper & cs] opts]
-  {(->mongo-operator oper)
-   (mapv #(translate-criteria % opts) cs)})
+  (if (and (= :and oper)
+           (every? map? cs))
+    (translate-criteria (apply merge-with throw-on-dup-key cs)
+                        opts)
+    {(->mongo-operator oper)
+     (mapv #(translate-criteria % opts) cs)}))
