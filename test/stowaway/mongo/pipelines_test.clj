@@ -60,7 +60,7 @@
 
 ; Common criteria 8: "or" conjunction
 ; [:or {:user/first-name "John"} {:user/age 25}]
-(deftest query-against-an-and-conjunction
+(deftest query-against-an-or-conjunction
   (is (= [{:$match {:$or [{:first_name "John"}
                           {:age 25}]}}]
          (m/criteria->pipeline [:or
@@ -70,9 +70,9 @@
 ; Common criteria 9: complex conjunction
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
 (deftest query-against-a-complex-conjunction
-  (is (= [{:$match {:and [{:$or [{:first_name "John"}
-                                 {:age 25}]}
-                          {:last_name "Doe"}]}}]
+  (is (= [{:$match {:$and [{:$or [{:first_name "John"}
+                                  {:age 25}]}
+                           {:last_name "Doe"}]}}]
          (m/criteria->pipeline [:and
                                 [:or
                                  {:user/first-name "John"}

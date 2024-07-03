@@ -2,13 +2,16 @@
   (:require [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
             [camel-snake-kebab.core :refer [->snake_case_keyword]]
+            [stowaway.core :as stow]
             [stowaway.graph :as g]
+            [stowaway.util :refer [type-dispatch]]
             [stowaway.inflection :refer [singular
                                          plural]]
             [stowaway.criteria :as c :refer [namespaces
                                              extract-ns
                                              single-ns]]
-            [stowaway.mongo :refer [translate-criteria]]))
+            [stowaway.mongo :refer [translate-criteria
+                                    oper-map]]))
 
 (defn- extract-collections
   "Give a criteria, return a vector of namespaces tranlated
@@ -24,13 +27,23 @@
     x
     (->snake_case_keyword x)))
 
-(defn- match
-  [criteria & [prefix]]
+(defmulti ^:private match* type-dispatch)
+
+(defmethod match* ::stow/vector
+  [[conj & cs] prefix]
+  {(oper-map conj) (mapv #(match* % prefix) cs)})
+
+(defmethod match* ::stow/map
+  [criteria prefix]
   (let [prefix-fn (if prefix
                     #(keyword (str (name prefix) "." (name %)))
                     identity)]
-    {:$match (update-keys criteria (comp ->snake-case-keyword
-                                         prefix-fn))}))
+    (update-keys criteria (comp ->snake-case-keyword
+                                prefix-fn))))
+
+(defn- match
+  [criteria & [prefix]]
+  {:$match (match* criteria prefix)})
 
 (defn- ref-field
   "Given a collection name, return the name of the field another

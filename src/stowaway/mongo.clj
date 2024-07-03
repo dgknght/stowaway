@@ -5,7 +5,6 @@
             [clojure.pprint :refer [pprint]]
             [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.core :as s]
-            [stowaway.inflection :refer [plural]]
             [stowaway.util :refer [unqualify-keys
                                    update-in-if
                                    key-join]]))
@@ -50,11 +49,13 @@
   (postwalk #(mongoize % options) m))
 
 (def oper-map
-  {:> :$gt
-   :>= :$gte
-   :< :$lt
-   :<= :$lte
-   :!= :$ne
+  {:>         :$gt
+   :>=        :$gte
+   :<         :$lt
+   :<=        :$lte
+   :!=        :$ne
+   :or        :$or
+   :and       :$and
    :including :$elemMatch})
 
 (defn ->mongo-operator
@@ -124,7 +125,6 @@
         adjust-complex-criteria)))
 
 (defmethod translate-criteria ::s/vector
-  [[oper & crits] opts]
-  (if (= :or oper)
-    {:$or (mapv #(translate-criteria % opts) crits)}
-    (apply merge crits)))
+  [[oper & cs] opts]
+  {(->mongo-operator oper)
+   (mapv #(translate-criteria % opts) cs)})

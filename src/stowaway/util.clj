@@ -67,3 +67,7 @@
                  (name %)
                  %))
          (str/join))))
+
+(defn type-dispatch
+  [x & _]
+  (type x))
