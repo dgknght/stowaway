@@ -59,10 +59,11 @@
                                   {:user/first-name "John"}
                                   {:user/age 25}]))))
   (testing "unmatchable and"
-    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unmatchable criteria"
-                          (m/criteria->pipeline [:and
-                                                 {:user/first-name "John"}
-                                                 {:user/first-name "Jane"}])))))
+    (is (= [{:$match {:$and [{:first_name "John"}
+                             {:first_name "Jane"}]}}]
+           (m/criteria->pipeline [:and
+                                  {:user/first-name "John"}
+                                  {:user/first-name "Jane"}])))))
 
 ; Common criteria 8: "or" conjunction
 ; [:or {:user/first-name "John"} {:user/age 25}]
