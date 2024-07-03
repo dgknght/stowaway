@@ -100,12 +100,20 @@
 ; Common criteria 7: "and" conjunction
 ; [:and {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-an-and-conjunction
-  (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
-          "John"
-          25]
-         (sql/->query [:and
-                       {:user/first-name "John"}
-                       {:user/age 25}]))))
+  (testing "redundant"
+    (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
+            "John"
+            25]
+           (sql/->query [:and
+                         {:user/first-name "John"}
+                         {:user/age 25}]))))
+  (testing "unmatchable"
+    (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.first_name = ?)"
+            "John"
+            "Jane"]
+           (sql/->query [:and
+                         {:user/first-name "John"}
+                         {:user/first-name "Jane"}])))))
 
 ; Common criteria 8: "or" conjunction
 ; [:or {:user/first-name "John"} {:user/age 25}]
