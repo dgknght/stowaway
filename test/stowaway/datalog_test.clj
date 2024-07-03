@@ -105,20 +105,32 @@
 ; Common criteria 7: "and" conjunction
 ; [:and {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-an-and-conjunction
-  (is (= '{:find [?x]
-           :where [[?x :user/first-name ?first-name-in]
-                   [?x :user/age ?age-in]]
-           :in [?first-name-in ?age-in]
-           :args ["John" 25]}
-         (dtl/apply-criteria query
-                             [:and
-                              {:user/first-name "John"}
-                              {:user/age 25}]))))
+  (testing "redundant"
+    (is (= '{:find [?x]
+             :where [[?x :user/first-name ?first-name-in]
+                     [?x :user/age ?age-in]]
+             :in [?first-name-in ?age-in]
+             :args ["John" 25]}
+           (dtl/apply-criteria query
+                               [:and
+                                {:user/first-name "John"}
+                                {:user/age 25}]))))
+  (testing "unmatchable"
+    (is (= '{:find [?x]
+             :where [[?x :user/first-name ?first-name-in]
+                     [?x :user/first-name ?first-name-in-2]]
+             :in [?first-name-in ?first-name-in-2]
+             :args ["John" "Jane"]}
+           (dtl/apply-criteria query
+                               [:and
+                                {:user/first-name "John"}
+                                {:user/first-name "Jane"}])))))
 
 ; Common criteria 8: "and" conjunction
 ; [:and {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-an-or-conjunction
-  (is (= '{:find [?x]
+  (testing "different fields"
+    (is (= '{:find [?x]
            :where (or [?x :user/first-name ?first-name-in]
                       [?x :user/age ?age-in])
            :in [?first-name-in ?age-in]
@@ -127,6 +139,16 @@
                              [:or
                               {:user/first-name "John"}
                               {:user/age 25}]))))
+  (testing "same field"
+    (is (= '{:find [?x]
+           :where (or [?x :user/first-name ?first-name-in-1]
+                      [?x :user/first-name ?first-name-in-2])
+           :in [?first-name-in-1 ?first-name-in-2]
+           :args ["John" "Jane"]}
+         (dtl/apply-criteria query
+                             [:or
+                              {:user/first-name "John"}
+                              {:user/first-name "Jane"}])))))
 
 ; Common criteria 9: complex conjunction
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]

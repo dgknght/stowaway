@@ -1,7 +1,8 @@
 (ns stowaway.datalog
   (:require [clojure.spec.alpha :as s]
             [clojure.pprint :refer [pprint]]
-            [clojure.set :refer [difference]]
+            [clojure.set :refer [difference
+                                 intersection]]
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
@@ -341,40 +342,66 @@
         (sort-where-clauses opts))))
 
 (defn- merge-where-clauses
-  [conj w v]
+  [v2 v1 conj]
   (cons (symbol conj)
-        (if (symbol? (first v))
-          (if (symbol? (first w))
-            [w v]
-            (apply list v w))
-          (if (symbol? (first w))
-            (concat v [w])
-            (concat w v)))))
+        (if (symbol? (first v1))
+          (if (symbol? (first v2))
+            [v2 v1]
+            (apply list v1 v2))
+          (if (symbol? (first v2))
+            (concat v1 [v2])
+            (concat v2 v1)))))
 
-(defn- merge-query-attrs
-  [conj query [k v]]
-  (update-in query
-             [k]
-             (if (= :where k)
-               #(merge-where-clauses conj % v)
-               #(concat % v))))
+(defn- extract-arg
+  [{:keys [in args]} ref]
+  (let [i (.indexOf in ref)]
+    (when (not= -1 i)
+      (nth args i))))
+
+(defn- duplicate-inputs
+  [& qs]
+  (let [ks (->> qs
+                  (map (comp set :in))
+                  (apply intersection))]
+    (reduce (fn [m q]
+              (reduce (fn [mm k]
+                        (update-in mm [k] (fnil conj []) (extract-arg q k)))
+                      m
+                      ks))
+            {}
+            qs)))
+
+; there are 3 scenarios to consider here:
+; 1. q1 and q2 don't have any inputs in common
+; 2. q1 and q2 have two checks for the same field against the same value
+; 3. q1 and q2 have two checks for the same field against different values
+(defn- merge-queries*
+  [conj q1 q2]
+  (let [dup-ins (duplicate-inputs q1 q2)
+        f (fn [q [k v]]
+            (case k
+              :where (update-in q [k] merge-where-clauses v conj)
+              (update-in q [k] concat v)))]
+
+    (when (seq dup-ins)
+      (pprint {::dup-ins dup-ins
+               ::q1 q1
+               ::q2 q2}))
+
+    (reduce f
+            (or q1 {})
+            (seq (dissoc q2 :find)))))
 
 (defn- merge-queries
   [conj queries]
-  (reduce (fn [q1 q2]
-            (reduce (partial merge-query-attrs conj)
-                    (or q1 {})
-                    (seq (dissoc q2 :find))))
+  (reduce (partial merge-queries* conj)
           queries))
 
 (defmethod apply-criteria ::stow/vector
   [query [conj & cs] & [opts]]
-  (if (and (= :and conj)
-           (every? map? cs))
-    (apply-criteria query (apply merge cs) opts)
-    (->> cs
-         (map #(apply-criteria query % opts))
-         (merge-queries conj))))
+  (->> cs
+       (map #(apply-criteria query % opts))
+       (merge-queries conj)))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
