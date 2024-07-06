@@ -1,11 +1,11 @@
 (ns stowaway.mongo
   (:require[clojure.string :as str]
             [clojure.walk :refer [postwalk]]
-            [clojure.set :refer [rename-keys
-                                 intersection]]
+            [clojure.set :refer [rename-keys]]
             [clojure.pprint :refer [pprint]]
             [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.core :as s]
+            [stowaway.criteria :refer [simplify-and]]
             [stowaway.util :refer [unqualify-keys
                                    update-in-if
                                    key-join]]))
@@ -125,22 +125,9 @@
         (rename-keys {:id :_id})
         adjust-complex-criteria)))
 
-(defn- redundant-and?
-  [[oper & cs]]
-  (and (= :and oper)
-       (every? map? cs)
-       (reduce (fn [c1 c2]
-                 (let [dup-keys (intersection (set (keys c1))
-                                              (set (keys c2)))]
-                   (if (or (empty? dup-keys)
-                           (every? #(= (c1 %) (c2 %)) dup-keys))
-                     (merge c1 c2)
-                     (reduced false))))
-               cs)))
-
 (defmethod translate-criteria ::s/vector
   [[oper & cs :as criteria] opts]
-  (if (redundant-and? criteria)
-    (translate-criteria (apply merge cs) opts)
+  (if-let [simp (simplify-and criteria)]
+    (translate-criteria simp opts)
     {(->mongo-operator oper)
      (mapv #(translate-criteria % opts) cs)}))

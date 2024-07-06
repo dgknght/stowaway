@@ -398,10 +398,12 @@
           queries))
 
 (defmethod apply-criteria ::stow/vector
-  [query [conj & cs] & [opts]]
-  (->> cs
-       (map #(apply-criteria query % opts))
-       (merge-queries conj)))
+  [query [conj & cs :as crt] & [opts]]
+  (if-let [simp (c/simplify-and crt)]
+    (apply-criteria query simp opts)
+    (->> cs
+         (map #(apply-criteria query % opts))
+         (merge-queries conj))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]

@@ -1,7 +1,8 @@
 (ns stowaway.criteria
   (:require [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
-            [clojure.set :refer [union]]))
+            [clojure.set :refer [union
+                                 intersection]]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -108,3 +109,16 @@
   (let [ns (namespaces criteria)]
     (when (= 1 (count ns))
       (first ns))))
+
+(defn simplify-and
+  [[oper & cs]]
+  (and (= :and oper)
+       (every? map? cs)
+       (reduce (fn [c1 c2]
+                 (let [dup-keys (intersection (set (keys c1))
+                                              (set (keys c2)))]
+                   (if (or (empty? dup-keys)
+                           (every? #(= (c1 %) (c2 %)) dup-keys))
+                     (merge c1 c2)
+                     (reduced false))))
+               cs)))

@@ -1,5 +1,5 @@
 (ns stowaway.criteria-test
-  (:require [clojure.test :refer [deftest is testing assert-expr do-report]]
+  (:require [clojure.test :refer [deftest is are testing assert-expr do-report]]
             [clojure.spec.alpha :as s]
             [stowaway.criteria :as c]))
 
@@ -96,3 +96,24 @@
       "An empty map is valid")
   (is (not (s/valid? ::c/criteria []))
       "An empty vector is valid"))
+
+(deftest simplify-a-redundant-and
+  (is (= {:first-name "John"
+          :last-name "Doe"}
+         (c/simplify-and
+           [:and
+            {:first-name "John"}
+            {:last-name "Doe"}]))
+      "A redundant and is simplified")
+  (is (not (c/simplify-and
+             [:and
+              {:first-name "John"}
+              {:first-name "Jane"}]))
+      "Duplicate keys cannot be simplified")
+  (is (not (c/simplify-and
+             [:and
+              {:last-name "Doe"}
+              [:or
+               {:age 21}
+               {:first-name "Jane"}]]))
+      "Nesting ors cannot be simplified"))
