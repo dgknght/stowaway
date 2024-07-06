@@ -3,6 +3,7 @@
             [clojure.pprint :refer [pprint]]
             [clojure.set :refer [difference
                                  intersection]]
+            [clojure.walk :refer [postwalk]]
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
@@ -341,16 +342,24 @@
         (append-joining-clauses criteria)
         (sort-where-clauses opts))))
 
+(defn- simplify-and
+  [[conj & cs :as clause]]
+  (if (and (= 'and conj)
+           (every? vector? cs))
+    (vec cs)
+    clause))
+
 (defn- merge-where-clauses
   [v2 v1 conj]
-  (cons (symbol conj)
-        (if (symbol? (first v1))
-          (if (symbol? (first v2))
-            [v2 v1]
-            (apply list v1 v2))
-          (if (symbol? (first v2))
-            (concat v1 [v2])
-            (concat v2 v1)))))
+  (simplify-and
+    (cons (symbol conj)
+          (if (symbol? (first v1))
+            (if (symbol? (first v2))
+              [v2 v1]
+              (apply list v1 v2))
+            (if (symbol? (first v2))
+              (concat v1 [v2])
+              (concat v2 v1))))))
 
 (defn- extract-arg
   [{:keys [in args]} ref]
@@ -371,26 +380,36 @@
             {}
             qs)))
 
+(defn- rename-in
+  [query old new]
+  (postwalk (fn [x]
+              (if (= x old)
+                new
+                x))
+            query))
+
+(defn- rename-dups
+  [query other-query]
+  (reduce (fn [qq [in vs]]
+            (if (= 2 (count vs))
+              (rename-in qq in '?first-name-in-2)
+              qq))
+          query
+          (duplicate-inputs other-query query)))
+
 ; there are 3 scenarios to consider here:
 ; 1. q1 and q2 don't have any inputs in common
 ; 2. q1 and q2 have two checks for the same field against the same value
 ; 3. q1 and q2 have two checks for the same field against different values
 (defn- merge-queries*
   [conj q1 q2]
-  (let [dup-ins (duplicate-inputs q1 q2)
-        f (fn [q [k v]]
+  (let [f (fn [q [k v]]
             (case k
               :where (update-in q [k] merge-where-clauses v conj)
               (update-in q [k] concat v)))]
-
-    (when (seq dup-ins)
-      (pprint {::dup-ins dup-ins
-               ::q1 q1
-               ::q2 q2}))
-
     (reduce f
             (or q1 {})
-            (seq (dissoc q2 :find)))))
+            (seq (rename-dups (dissoc q2 :find) q1)))))
 
 (defn- merge-queries
   [conj queries]
