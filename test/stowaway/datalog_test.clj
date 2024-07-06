@@ -114,7 +114,15 @@
            (dtl/apply-criteria query
                                [:and
                                 {:user/first-name "John"}
-                                {:user/age 25}]))))
+                                {:user/age 25}])))
+    (is (= '{:find [?x]
+             :where [[?x :user/first-name ?first-name-in]]
+             :in [?first-name-in]
+             :args ["John"]}
+           (dtl/apply-criteria query
+                               [:and
+                                {:user/first-name "John"}
+                                {:user/first-name "John"}]))))
   (testing "unmatchable"
     (is (= '{:find [?x]
              :where [[?x :user/first-name ?first-name-in]
