@@ -1,9 +1,7 @@
 (ns stowaway.datalog
   (:require [clojure.spec.alpha :as s]
             [clojure.pprint :refer [pprint]]
-            [clojure.set :refer [difference
-                                 intersection]]
-            [clojure.walk :refer [postwalk]]
+            [clojure.set :refer [difference]]
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
@@ -325,104 +323,43 @@
                #(sort (compare-where-clauses shortest entities)
                       %))))
 
-(defmulti apply-criteria
+(defmulti ^:private apply-criteria*
   "Given a datalog query and a criteria (map or vector), return
   the query with additional attributes that match the specified criteria."
-  (fn [_query criteria & [opts]]
-    {:pre [(s/valid? ::c/criteria criteria)
-           (s/valid? (s/nilable ::options) opts)]}
+  (fn [{:keys [criteria]}]
     (type criteria)))
 
-(defmethod apply-criteria ::stow/map
-  [query criteria & [opts]]
-  (with-options opts
-    (-> (reduce apply-criterion
-                query
-                criteria)
-        (append-joining-clauses criteria)
-        (sort-where-clauses opts))))
+(defmethod apply-criteria* ::stow/map
+  [{:keys [criteria options] :as context}]
+  (with-options options
+    (update-in context
+               [:query] #(-> (reduce apply-criterion
+                                     %
+                                     criteria)
+                             (append-joining-clauses criteria)
+                             (sort-where-clauses options)))))
 
-(defn- simplify-and
-  [[conj & cs :as clause]]
-  (if (and (= 'and conj)
-           (every? vector? cs))
-    (vec cs)
-    clause))
+(defmethod apply-criteria* ::stow/vector
+  [{:keys [criteria] :as context}]
+  (if-let [simp (c/simplify-and criteria)]
+    (apply-criteria* (assoc context :criteria simp))
+    (let [[conj & cs] criteria]
+      (reduce (fn [ctx criteria]
+                (apply-criteria*
+                  (assoc ctx
+                         :criteria criteria
+                         :conj conj)))
+              context
+              cs))))
 
-(defn- merge-where-clauses
-  [v2 v1 conj]
-  (simplify-and
-    (cons (symbol conj)
-          (if (symbol? (first v1))
-            (if (symbol? (first v2))
-              [v2 v1]
-              (apply list v1 v2))
-            (if (symbol? (first v2))
-              (concat v1 [v2])
-              (concat v2 v1))))))
+(defn apply-criteria
+  [query criteria & [options]]
+  {:pre [(s/valid? ::c/criteria criteria)
+         (s/valid? (s/nilable ::options) options)]}
 
-(defn- extract-arg
-  [{:keys [in args]} ref]
-  (let [i (.indexOf in ref)]
-    (when (not= -1 i)
-      (nth args i))))
-
-(defn- duplicate-inputs
-  [& qs]
-  (let [ks (->> qs
-                  (map (comp set :in))
-                  (apply intersection))]
-    (reduce (fn [m q]
-              (reduce (fn [mm k]
-                        (update-in mm [k] (fnil conj []) (extract-arg q k)))
-                      m
-                      ks))
-            {}
-            qs)))
-
-(defn- rename-in
-  [query old new]
-  (postwalk (fn [x]
-              (if (= x old)
-                new
-                x))
-            query))
-
-(defn- rename-dups
-  [query other-query]
-  (reduce (fn [qq [in vs]]
-            (if (= 2 (count vs))
-              (rename-in qq in '?first-name-in-2)
-              qq))
-          query
-          (duplicate-inputs other-query query)))
-
-; there are 3 scenarios to consider here:
-; 1. q1 and q2 don't have any inputs in common
-; 2. q1 and q2 have two checks for the same field against the same value
-; 3. q1 and q2 have two checks for the same field against different values
-(defn- merge-queries*
-  [conj q1 q2]
-  (let [f (fn [q [k v]]
-            (case k
-              :where (update-in q [k] merge-where-clauses v conj)
-              (update-in q [k] concat v)))]
-    (reduce f
-            (or q1 {})
-            (seq (rename-dups (dissoc q2 :find) q1)))))
-
-(defn- merge-queries
-  [conj queries]
-  (reduce (partial merge-queries* conj)
-          queries))
-
-(defmethod apply-criteria ::stow/vector
-  [query [conj & cs :as crt] & [opts]]
-  (if-let [simp (c/simplify-and crt)]
-    (apply-criteria query simp opts)
-    (->> cs
-         (map #(apply-criteria query % opts))
-         (merge-queries conj))))
+  (:query (apply-criteria* {:query query
+                            :criteria criteria
+                            :options (or options {})})))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
