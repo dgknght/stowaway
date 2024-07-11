@@ -6,6 +6,7 @@
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
             [stowaway.core :as stow]
+            [stowaway.util :refer [type-dispatch]]
             [stowaway.inflection :refer [singular]]
             [stowaway.criteria :as c]
             [stowaway.graph :as g]))
@@ -77,27 +78,29 @@
 
   ; with *opts* {:vars {:user ?u}}
   (ref-var :user) => ?u"
-  [k]
-  {:pre [k
-         (nil? (namespace k))]}
+  ([k] (ref-var k *opts*))
+  ([k opts]
+   {:pre [k
+          (nil? (namespace k))]}
 
-  (let [target (:target *opts*)
-        vars (or (:vars *opts*) {})
-        n (name k)]
-    (or (vars k)
-        (if (or (nil? target)
-                (= target (keyword n))
-                (= :id k))
-          '?x
-          (symbol (str "?" n))))))
+   (let [target (:target opts)
+         vars (or (:vars opts) {})
+         n (name k)]
+     (or (vars k)
+         (if (or (nil? target)
+                 (= target (keyword n))
+                 (= :id k))
+           '?x
+           (symbol (str "?" n)))))))
 
 (defn- param-ref
   "Given an attribute keyword, return a symbol that will represent
   an input value in the query"
-  [k]
-  (if (id? k)
-    (ref-var k)
-    (attr-ref k "-in")))
+  ([k] (param-ref k *opts*))
+  ([k opts]
+   (if (id? k)
+     (ref-var k opts)
+     (attr-ref k "-in"))))
 
 (defn- append-where
   "Appends clauses to an existing where clause.
@@ -323,6 +326,29 @@
                #(sort (compare-where-clauses shortest entities)
                       %))))
 
+(defmulti ^:private extract-inputs* type-dispatch)
+
+(defmethod extract-inputs* ::stow/map
+  [m next-ident]
+  (reduce (fn [res k]
+            (assoc-in res k (symbol (str "?" (next-ident)))))
+          {}
+          m))
+
+(defmethod extract-inputs* ::stow/vector
+  [[_ & cs] next-ident]
+  ; TODO: figure out how to merge these
+  (extract-inputs* (first cs) next-ident))
+
+(defn- dispense [vals]
+  (let [index (atom -1) ]
+    (fn []
+      (nth vals (swap! index inc)))))
+
+(defn- extract-inputs
+  [criteria]
+  (extract-inputs* criteria (dispense [:a :b :c :d :e :f :g :h :i])))
+
 (defmulti ^:private apply-criteria*
   "Given a datalog query and a criteria (map or vector), return
   the query with additional attributes that match the specified criteria."
@@ -341,9 +367,15 @@
 
 (defmethod apply-criteria* ::stow/vector
   [{:keys [criteria] :as context}]
+
+  (pprint {::apply-criteria* criteria})
+
   (if-let [simp (c/simplify-and criteria)]
     (apply-criteria* (assoc context :criteria simp))
     (let [[conj & cs] criteria]
+
+      (pprint {:inputs (extract-inputs criteria)})
+
       (reduce (fn [ctx criteria]
                 (apply-criteria*
                   (assoc ctx
