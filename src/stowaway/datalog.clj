@@ -349,8 +349,8 @@
                existing)))
 
 (defmethod extract-inputs* ::stow/vector
-  [[_ & cs] {:keys [next-ident existing]}]
-  (reduce #(extract-inputs* %2 next-ident %1)
+  [[_ & cs] {:keys [existing] :as opts}]
+  (reduce #(extract-inputs* %2 (assoc opts :existing %1))
           existing
           cs))
 
