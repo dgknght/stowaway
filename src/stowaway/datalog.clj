@@ -2,6 +2,7 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.pprint :refer [pprint]]
             [clojure.set :refer [difference]]
+            [clojure.walk :refer [postwalk]]
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
@@ -10,6 +11,12 @@
             [stowaway.inflection :refer [singular]]
             [stowaway.criteria :as c]
             [stowaway.graph :as g]))
+
+(defn- parse-id
+  [x]
+  (if (string? x)
+    (parse-long x)
+    x))
 
 (def ^:private concat*
   (fnil (comp vec concat) []))
@@ -423,16 +430,25 @@
                (-> conj name symbol)
                clauses)))))
 
+(defn- normalize-model-refs
+  [criteria]
+  (postwalk (fn [x]
+              (if (c/model-ref? x)
+                (-> x :id parse-id)
+                x))
+            criteria))
+
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
 
-  (let [inputs-map (extract-inputs criteria)
+  (let [normalized (normalize-model-refs criteria)
+        inputs-map (extract-inputs normalized)
         [inputs args] (input-map->lists inputs-map)
-        where (criteria->where criteria (assoc options
-                                               :inputs inputs-map
-                                               :entity-ref '?x))]
+        where (criteria->where normalized (assoc options
+                                                 :inputs inputs-map
+                                                 :entity-ref '?x))]
     (assoc query
            :in inputs
            :args args
