@@ -82,25 +82,25 @@
 ; Common criteria 6: subquery against attributes
 ; {:user/identities [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
 (deftest query-against-subquery-criteria
-  (testing "associated entities with attributes"
-    (is (= '{:find [?x]
-             :where [[?x :user/identities ?identity]
-                     [?identity :identity/oauth-provider ?a]
-                     [?identity :identity/oauth-id ?b]]
-             :in [?a ?b]
-             :args ["google" "abc123"]}
-           (dtl/apply-criteria query
-                               {:user/identities [:including
-                                                  #:identity{:oauth-provider "google"
-                                                             :oauth-id "abc123"}]}))))
-  (testing "associated tuples"
-    (is (= '{:find [?x]
-             :where [[?x :user/identities ?a]]
-             :in [?a]
-             :args [["google" "abc123"]]}
-           (dtl/apply-criteria query
-                               {:user/identities [:including
-                                                  ["google" "abc123"]]})))))
+  (is (= '{:find [?x]
+           :where [[?x :user/identities ?identity]
+                   [?identity :identity/oauth-provider ?a]
+                   [?identity :identity/oauth-id ?b]]
+           :in [?a ?b]
+           :args ["google" "abc123"]}
+         (dtl/apply-criteria query
+                             {:user/identities [:including
+                                                #:identity{:oauth-provider "google"
+                                                           :oauth-id "abc123"}]}))))
+
+(deftest query-specified-tuple-against-a-collection-of-types
+  (is (= '{:find [?x]
+           :where [[?x :user/identities ?a]]
+           :in [?a]
+           :args [["google" "abc123"]]}
+         (dtl/apply-criteria query
+                             {:user/identities [:including
+                                                ["google" "abc123"]]}))))
 
 ; TODO: Revisit this, as the equals should probably not be used for an insclusion test
 (deftest apply-a-tuple-matching-criterion
