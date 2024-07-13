@@ -392,10 +392,15 @@
   (vec (mapcat #(criterion->where % opts) criteria)))
 
 (defmethod criteria->where ::stow/vector
-  [[conj & cs] opts]
-  (apply list
-         (-> conj name symbol)
-         (map #(criteria->where % opts) cs)))
+  [[conj & cs :as criteria] opts]
+  (if-let [simplified (c/simplify-and criteria)]
+    (criteria->where simplified opts)
+    (let [clauses (map #(criteria->where % opts) cs)]
+      (if (= :and conj)
+        (mapv first clauses)
+        (apply list
+               (-> conj name symbol)
+               clauses)))))
 
 (defn apply-criteria
   [query criteria & [options]]

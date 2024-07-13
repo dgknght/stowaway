@@ -105,11 +105,17 @@
             {:first-name "John"}
             {:last-name "Doe"}]))
       "A redundant and is simplified")
+  (is (= {:first-name "John"}
+         (c/simplify-and
+           [:and
+            {:first-name "John"}
+            {:first-name "John"}]))
+      "A redundant key-value pairs are reduced")
   (is (not (c/simplify-and
              [:and
               {:first-name "John"}
               {:first-name "Jane"}]))
-      "Duplicate keys cannot be simplified")
+      "Duplicate keys with different values cannot be simplified")
   (is (not (c/simplify-and
              [:and
               {:last-name "Doe"}

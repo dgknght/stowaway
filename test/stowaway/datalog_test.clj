@@ -128,7 +128,7 @@
                                 {:user/age 25}])))
     (is (= '{:find [?x]
              :where [[?x :user/first-name ?a]]
-             :in [?b]
+             :in [?a]
              :args ["John"]}
            (dtl/apply-criteria query
                                [:and
