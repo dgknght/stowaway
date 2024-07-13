@@ -5,7 +5,8 @@
             [clojure.pprint :refer [pprint]]
             [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.core :as s]
-            [stowaway.criteria :refer [simplify-and]]
+            [stowaway.criteria :refer [simplify-and
+                                       model-ref?]]
             [stowaway.util :refer [unqualify-keys
                                    update-in-if
                                    key-join]]))
@@ -15,15 +16,6 @@
   (->> (keys m)
        (map name)
        (some #(str/starts-with? % "$"))))
-
-(defn- one?
-  [c]
-  (= 1 (count c)))
-
-(def ^:private simple-model-ref?
-  (every-pred map?
-              one?
-              #(= :id (first (keys %)))))
 
 (defmulti ^:private mongoize (fn [x & _] (type x)))
 
@@ -37,7 +29,7 @@
 
 (defmethod mongoize ::s/map-entry
   [[_ v :as e] {:keys [coerce-id]}]
-  (if (simple-model-ref? v)
+  (if (model-ref? v)
     (-> e
         (update-in [0] #(key-join % "_id"))
         (update-in [1] (comp coerce-id :id)))

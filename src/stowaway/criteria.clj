@@ -122,3 +122,12 @@
                      (merge c1 c2)
                      (reduced false))))
                cs)))
+
+(defn- one?
+  [c]
+  (= 1 (count c)))
+
+(def model-ref?
+  (every-pred map?
+              one?
+              #(= :id (first (keys %)))))

@@ -1,5 +1,5 @@
 (ns stowaway.criteria-test
-  (:require [clojure.test :refer [deftest is are testing assert-expr do-report]]
+  (:require [clojure.test :refer [deftest is testing assert-expr do-report]]
             [clojure.spec.alpha :as s]
             [stowaway.criteria :as c]))
 
@@ -123,3 +123,13 @@
                {:age 21}
                {:first-name "Jane"}]]))
       "Nesting ors cannot be simplified"))
+
+(deftest identity-a-model-ref
+  (is (c/model-ref? {:id 101})
+      "A map with only an :id attribute is a model ref")
+  (is (not (c/model-ref? {:id 101 :first-name "John"}))
+      "A map with and :id attribute any other attributes is not a model ref")
+  (is (not (c/model-ref? {:first-name "John"}))
+      "A map without an :id attribute is not a model ref")
+  (is (not (c/model-ref? [:id 101]))
+      "A vector is not a model ref"))
