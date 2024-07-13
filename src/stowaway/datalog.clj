@@ -305,8 +305,8 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in) :binary-pred
-          (:and :or)          :conjunction)))))
+          (:> :>= :< :<= :in :!=) :binary-pred
+          (:and :or)              :conjunction)))))
 
 (defmethod criterion->inputs :default
   [criterion]
