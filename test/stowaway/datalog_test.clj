@@ -8,16 +8,16 @@
 ; #:user{:last-name "Doe"}
 (deftest apply-a-simple-criterion
   (is (= '{:find [?x]
-           :where [[?x :user/last-name ?last-name-in]]
-           :in [?last-name-in]
+           :where [[?x :user/last-name ?a]]
+           :in [?a]
            :args ["Doe"]}
          (dtl/apply-criteria query
                              #:user{:last-name "Doe"}))))
 
 (deftest apply-a-simple-criterion-and-specify-the-entity-var
   (is (= '{:find [?usr]
-           :where [[?usr :user/first-name ?first-name-in]]
-           :in [?first-name-in]
+           :where [[?usr :user/first-name ?a]]
+           :in [?a]
            :args ["John"]}
          (dtl/apply-criteria '{:find [?usr]}
                              #:user{:first-name "John"}
@@ -61,9 +61,9 @@
 ;        :age 25}
 (deftest apply-multiple-simple-equality-criteria
   (is (= '{:find [?x]
-           :where [[?x :user/first-name ?first-name-in]
-                   [?x :user/age ?age-in]]
-           :in [?first-name-in ?age-in]
+           :where [[?x :user/first-name ?a]
+                   [?x :user/age ?b]]
+           :in [?a ?b]
            :args ["John" 25]}
          (dtl/apply-criteria query
                              #:user{:first-name "John"
@@ -73,8 +73,8 @@
 ; {:order/user {:id 101}}
 (deftest query-against-criteria-with-a-model-reference
   (is (= '{:find [?x]
-           :where [[?x :order/user ?user-in]]
-           :in [?user-in]
+           :where [[?x :order/user ?a]]
+           :in [?a]
            :args [101]}
          (dtl/apply-criteria query
                              {:order/user {:id 101}}))))
@@ -85,9 +85,9 @@
   (testing "associated entities with attributes"
     (is (= '{:find [?x]
              :where [[?x :user/identities ?identity]
-                     [?identity :identity/oauth-provider ?oauth-provider-in]
-                     [?identity :identity/oauth-id ?oauth-id-in]]
-             :in [?oauth-provider-in ?oauth-id-in]
+                     [?identity :identity/oauth-provider ?a]
+                     [?identity :identity/oauth-id ?b]]
+             :in [?a ?b]
              :args ["google" "abc123"]}
            (dtl/apply-criteria query
                                {:user/identities [:including
@@ -95,29 +95,40 @@
                                                              :oauth-id "abc123"}]}))))
   (testing "associated tuples"
     (is (= '{:find [?x]
-             :where [[?x :user/identities ?identities-in]]
-             :in [?identities-in]
+             :where [[?x :user/identities ?a]]
+             :in [?a]
              :args [["google" "abc123"]]}
            (dtl/apply-criteria query
                                {:user/identities [:including
                                                   ["google" "abc123"]]})))))
+
+; TODO: Revisit this, as the equals should probably not be used for an insclusion test
+(deftest apply-a-tuple-matching-criterion
+  ; here it's necessary to use the := operator explicitly so that
+  ; the query logic doesn't mistake :google for the operator
+  (is (= '{:find [?x]
+           :where [[?x :user/identities ?a]]
+           :in [?a]
+           :args [[:google "abc123"]]}
+         (dtl/apply-criteria query
+                             #:user{:identities [:= [:google "abc123"]]}))))
 
 ; Common criteria 7: "and" conjunction
 ; [:and {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-an-and-conjunction
   (testing "redundant"
     (is (= '{:find [?x]
-             :where [[?x :user/first-name ?first-name-in]
-                     [?x :user/age ?age-in]]
-             :in [?first-name-in ?age-in]
+             :where [[?x :user/first-name ?a]
+                     [?x :user/age ?b]]
+             :in [?a ?b]
              :args ["John" 25]}
            (dtl/apply-criteria query
                                [:and
                                 {:user/first-name "John"}
                                 {:user/age 25}])))
     (is (= '{:find [?x]
-             :where [[?x :user/first-name ?first-name-in]]
-             :in [?first-name-in]
+             :where [[?x :user/first-name ?a]]
+             :in [?b]
              :args ["John"]}
            (dtl/apply-criteria query
                                [:and
@@ -125,9 +136,9 @@
                                 {:user/first-name "John"}]))))
   (testing "unmatchable"
     (is (= '{:find [?x]
-             :where [[?x :user/first-name ?first-name-in]
-                     [?x :user/first-name ?first-name-in-2]]
-             :in [?first-name-in ?first-name-in-2]
+             :where [[?x :user/first-name ?a]
+                     [?x :user/first-name ?b]]
+             :in [?a ?b]
              :args ["John" "Jane"]}
            (dtl/apply-criteria query
                                [:and
@@ -139,33 +150,33 @@
 (deftest query-against-an-or-conjunction
   (testing "different fields"
     (is (= '{:find [?x]
-           :where (or [?x :user/first-name ?first-name-in]
-                      [?x :user/age ?age-in])
-           :in [?first-name-in ?age-in]
-           :args ["John" 25]}
-         (dtl/apply-criteria query
-                             [:or
-                              {:user/first-name "John"}
-                              {:user/age 25}]))))
+             :where (or [?x :user/first-name ?a]
+                        [?x :user/age ?b])
+             :in [?a ?b]
+             :args ["John" 25]}
+           (dtl/apply-criteria query
+                               [:or
+                                {:user/first-name "John"}
+                                {:user/age 25}]))))
   (testing "same field"
     (is (= '{:find [?x]
-           :where (or [?x :user/first-name ?first-name-in-1]
-                      [?x :user/first-name ?first-name-in-2])
-           :in [?first-name-in-1 ?first-name-in-2]
-           :args ["John" "Jane"]}
-         (dtl/apply-criteria query
-                             [:or
-                              {:user/first-name "John"}
-                              {:user/first-name "Jane"}])))))
+             :where (or [?x :user/first-name ?a]
+                        [?x :user/first-name ?b])
+             :in [?a ?b]
+             :args ["John" "Jane"]}
+           (dtl/apply-criteria query
+                               [:or
+                                {:user/first-name "John"}
+                                {:user/first-name "Jane"}])))))
 
 ; Common criteria 9: complex conjunction
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
 (deftest query-against-a-complex-conjunction
   (is (= '{:find [?x]
-           :where (and [?x :user/last-name ?last-name-in]
-                       (or [?x :user/first-name ?first-name-in]
-                           [?x :user/age ?age-in]))
-           :in [?first-name-in ?age-in ?last-name-in]
+           :where (and [?x :user/last-name ?c]
+                       (or [?x :user/first-name ?a]
+                           [?x :user/age ?b]))
+           :in [?a ?b ?c]
            :args ["John" 25 "Doe"]}
          (dtl/apply-criteria query
                              [:and
@@ -176,8 +187,8 @@
 
 (deftest specify-the-query-key-prefix
   (is (= {:query '{:find [?x]
-                   :where [[?x :entity/name ?name-in]]
-                   :in [?name-in]}
+                   :where [[?x :entity/name ?a]]
+                   :in [?a]}
           :args ["Personal"]}
          (dtl/apply-criteria {:query query}
                              #:entity{:name "Personal"}
@@ -185,8 +196,8 @@
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
-           :where [[?x :xt/id ?id-in]]
-           :in [?id-in]
+           :where [[?x :xt/id ?a]]
+           :in [?a]
            :args [123]}
          (dtl/apply-criteria query
                              {:id 123}
@@ -195,8 +206,8 @@
 (deftest apply-a-comparison-criterion
   (is (= '{:find [?x]
            :where [[?x :account/balance ?balance]
-                   [(>= ?balance ?balance-in)]]
-           :in [?balance-in]
+                   [(>= ?balance ?a)]]
+           :in [?a]
            :args [500M]}
          (dtl/apply-criteria query
                              #:account{:balance [:>= 500M]}))))
@@ -204,8 +215,8 @@
 (deftest apply-a-not-equal-criterion
   (is (= '{:find [?x]
            :where [[?x :user/name ?name]
-                   [(!= ?name ?name-in)]]
-           :in [?name-in]
+                   [(!= ?name ?a)]]
+           :in [?a]
            :args ["John"]}
          (dtl/apply-criteria query
                              #:user{:name [:!= "John"]}))))
@@ -213,9 +224,9 @@
 (deftest apply-an-intersection-criterion
   (is (= '{:find [?x]
            :where [[?x :transaction/transaction-date ?transaction-date]
-                   [(>= ?transaction-date ?transaction-date-in-1)]
-                   [(< ?transaction-date ?transaction-date-in-2)]]
-           :in [?transaction-date-in-1 ?transaction-date-in-2]
+                   [(>= ?transaction-date ?a)]
+                   [(< ?transaction-date ?b)]]
+           :in [?a ?b]
            :args ["2020-01-01" "2020-02-01"]}
          (dtl/apply-criteria query
                              #:transaction{:transaction-date [:and
@@ -225,10 +236,10 @@
 
 (deftest apply-criteria-with-a-join
   (is (= '{:find [?x]
-           :where [[?x :entity/owner ?owner-in]
+           :where [[?x :entity/owner ?a]
                    [?commodity :commodity/entity ?x]
-                   [?commodity :commodity/symbol ?symbol-in]]
-           :in [?owner-in ?symbol-in]
+                   [?commodity :commodity/symbol ?b]]
+           :in [?a ?b]
            :args [101 "USD"]}
          (dtl/apply-criteria query
                              {:entity/owner 101
@@ -237,16 +248,6 @@
                               :relationships #{[:user :entity]
                                                [:entity :commodity]}
                               :graph-apex :user}))))
-
-(deftest apply-a-tuple-matching-criterion
-  ; here it's necessary to use the := operator explicitly so that
-  ; the query logic doesn't mistake :google for the operator
-  (is (= '{:find [?x]
-           :where [[?x :user/identities ?identities-in]]
-           :in [?identities-in]
-           :args [[:google "abc123"]]}
-         (dtl/apply-criteria query
-                             #:user{:identities [:= [:google "abc123"]]}))))
 
 (deftest apply-options
   (testing "limit"

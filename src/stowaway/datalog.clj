@@ -23,33 +23,24 @@
    :query-prefix []
    :remap {}})
 
-(defn- coerce
-  [x]
-  ((:coerce *opts*) x))
-
-(defn- args-key []
-  (:args-key *opts*))
-
 (defn- remap
   [k]
   (get-in (:remap *opts*) [k] k))
 
-(defn- query-key
-  [& ks]
-  (concat (:query-prefix *opts*) ks))
+(defn- dispatch-criterion
+  [c & _]
+  {:pre [(vector? c)]}
+  (let [[_k v] c]
+    (cond
+      (map? v)    :model-ref
+      (vector? v) (case (first v)
+                    :=                  :direct
+                    (:< :<= :> :>= :!=) :binary-pred
+                    :and                :intersection
+                    :or                 :union
+                    :including          :entity-match))))
 
-(defmulti apply-criterion
-  (fn [_query c]
-    {:pre [(vector? c)]}
-    (let [[_k v] c]
-      (cond
-        (map? v)    :model-ref
-        (vector? v) (case (first v)
-                      :=                  :direct
-                      (:< :<= :> :>= :!=) :binary-pred
-                      :and                :intersection
-                      :or                 :union
-                      :including          :entity-match)))))
+(defmulti apply-criterion dispatch-criterion)
 
 (defn- id?
   "Returns true if the given keyword specifies an entity id"
@@ -93,15 +84,6 @@
            '?x
            (symbol (str "?" n)))))))
 
-(defn- param-ref
-  "Given an attribute keyword, return a symbol that will represent
-  an input value in the query"
-  ([k] (param-ref k *opts*))
-  ([k opts]
-   (if (id? k)
-     (ref-var k opts)
-     (attr-ref k "-in"))))
-
 (defn- append-where
   "Appends clauses to an existing where clause.
 
@@ -140,35 +122,29 @@
                         predicate])))))
 
 (defn- apply-simple-criterion
-  [query k v]
-  (let [input (param-ref k)]
-    (-> query
-        (update-in (query-key :where) append-where k input)
-        (update-in (query-key :in) conj* input)
-        (update-in (args-key) conj* (coerce v)))))
+  [query k v inputs]
+  (let [input (get-in inputs [k v])]
+    (update-in query [:where] append-where k input)))
 
 (defmethod apply-criterion :default
-  [query [k v]]
-  (apply-simple-criterion query k v))
+  [query [k v] inputs]
+  (apply-simple-criterion query k v inputs))
 
 (defmethod apply-criterion :model-ref
-  [query c]
-  (apply-criterion query (update-in c [1] :id)))
+  [query c inputs]
+  (apply-criterion query (update-in c [1] :id) inputs))
 
 (defmethod apply-criterion :direct
-  [query [k [_oper v]]]
-  (apply-simple-criterion query k v))
+  [query [k [_oper v]] inputs]
+  (apply-simple-criterion query k v inputs))
 
 (defmethod apply-criterion :binary-pred
-  [query [k [pred v]]]
-  (let [input (attr-ref k "-in")]
-    (-> query
-        (update-in (args-key) conj* (coerce v))
-        (update-in (query-key :in) conj* input)
-        (update-in (query-key :where) append-where k input pred))))
+  [query [k [pred v]] inputs]
+  (let [input (get-in inputs k v)]
+    (update-in query [:where] append-where k input pred)))
 
 (defmethod apply-criterion :intersection
-  [query [k [_and & vs]]]
+  [query [k [_and & vs]] _inputs]
   ; 1. establish a reference to the model attribute
   ; 2. apply each comparison to the reference
   ; 3. decide if we need to wrap with (and ...)
@@ -178,20 +154,18 @@
                               #(+ 1 %))
                         (range (count vs)))
         attr-ref (attr-ref k)]
-    (-> query
-        (update-in (args-key) concat* (map (comp coerce last) vs))
-        (update-in (query-key :in)      concat* input-refs)
-        (update-in (query-key :where)
-                   concat*
-                   (cons
-                     ['?x (remap k) attr-ref]
-                     (->> vs
-                        (interleave input-refs)
-                        (partition 2)
-                        (map (fn [[input-ref [oper]]]
-                               [(list (-> oper name symbol)
-                                       attr-ref
-                                       input-ref)]))))))))
+    (update-in query
+               [:where]
+               concat*
+               (cons
+                 ['?x (remap k) attr-ref]
+                 (->> vs
+                      (interleave input-refs)
+                      (partition 2)
+                      (map (fn [[input-ref [oper]]]
+                             [(list (-> oper name symbol)
+                                    attr-ref
+                                    input-ref)])))))))
 
 (defn- apply-map-match
   [query k match]
@@ -199,21 +173,21 @@
     (reduce (fn [q [k v]]
               (let [val-in (symbol (str "?" (name k) "-in"))]
                 (-> q
-                    (update-in (query-key :where) conj [other-ent-ref k val-in])
-                    (update-in (query-key :in) conj* val-in)
-                    (update-in (args-key) conj* v))))
-            (update-in query (query-key :where) conj* ['?x (remap k) other-ent-ref])
+                    (update-in [:where] conj [other-ent-ref k val-in])
+                    (update-in [:in] conj* val-in)
+                    (update-in [:args] conj* v))))
+            (update-in query [:where] conj* ['?x (remap k) other-ent-ref])
             match)))
 
 (defn- apply-tuple-match
-  [query k match]
-  (apply-simple-criterion query k match))
+  [query k match inputs]
+  (apply-simple-criterion query k match inputs))
 
 (defmethod apply-criterion :entity-match
-  [query [k [_ match]]]
+  [query [k [_ match]] inputs]
   (cond
     (map? match)    (apply-map-match query k match)
-    (vector? match) (apply-tuple-match query k match)))
+    (vector? match) (apply-tuple-match query k match inputs)))
 
 (s/def ::args-key (s/coll-of keyword? :kind vector?))
 (s/def ::query-prefix (s/coll-of keyword :kind vector?))
@@ -277,7 +251,7 @@
   to join the namespaces."
   [query criteria]
   (update-in query
-             (query-key :where)
+             [:where]
              concat
              (extract-joining-clauses criteria)))
 
@@ -322,23 +296,49 @@
         entities (->> relationships seq flatten set)
         shortest #(shortest-path graph graph-apex %)]
     (update-in query
-               (query-key :where)
+               [:where]
                #(sort (compare-where-clauses shortest entities)
                       %))))
+
+(defmulti ^:private criterion->inputs
+  (fn [[_ v]]
+    (when (vector? v)
+      (let [[oper] v]
+        (case oper
+          (:> :>= :< :<= :in) :binary-pred
+          (:and :or)          :conjunction)))))
+
+(defmethod criterion->inputs :default
+  [criterion]
+  [criterion])
+
+(defmethod criterion->inputs :binary-pred
+  [[k [_ v]]]
+  [[k v]])
+
+(defmethod criterion->inputs :conjunction
+  [[k [_oper & criterions]]]
+  (map (fn [[_ v]]
+         [k v])
+       criterions))
 
 (defmulti ^:private extract-inputs* type-dispatch)
 
 (defmethod extract-inputs* ::stow/map
-  [m next-ident]
-  (reduce (fn [res k]
-            (assoc-in res k (symbol (str "?" (next-ident)))))
-          {}
-          m))
+  [m next-ident existing]
+  (->> m
+       (mapcat criterion->inputs)
+       (reduce (fn [res [k v]]
+                 (update-in res [k v] #(if %
+                                         %
+                                         (symbol (str "?" (next-ident))))))
+               existing)))
 
 (defmethod extract-inputs* ::stow/vector
-  [[_ & cs] next-ident]
-  ; TODO: figure out how to merge these
-  (extract-inputs* (first cs) next-ident))
+  [[_ & cs] next-ident existing]
+  (reduce #(extract-inputs* %2 next-ident %1)
+          existing
+          cs))
 
 (defn- dispense [vals]
   (let [index (atom -1) ]
@@ -347,51 +347,68 @@
 
 (defn- extract-inputs
   [criteria]
-  (extract-inputs* criteria (dispense [:a :b :c :d :e :f :g :h :i])))
+  (extract-inputs* criteria
+                   (dispense (map name [:a :b :c :d :e :f :g :h :i]))
+                   {}))
 
-(defmulti ^:private apply-criteria*
-  "Given a datalog query and a criteria (map or vector), return
-  the query with additional attributes that match the specified criteria."
-  (fn [{:keys [criteria]}]
-    (type criteria)))
+(defn- input-map->lists
+  [m]
+  (->> m
+       (mapcat (fn [[k v]]
+                 (map #(apply vector k %)
+                      v)))
+       (reduce (fn [res [_ input-val input-ref]]
+                 (-> res
+                     (update-in [0] conj input-ref)
+                     (update-in [1] conj input-val)))
+               [[] []])))
 
-(defmethod apply-criteria* ::stow/map
-  [{:keys [criteria options] :as context}]
-  (with-options options
-    (update-in context
-               [:query] #(-> (reduce apply-criterion
-                                     %
-                                     criteria)
-                             (append-joining-clauses criteria)
-                             (sort-where-clauses options)))))
+(defmulti ^:private criterion->where dispatch-criterion)
 
-(defmethod apply-criteria* ::stow/vector
-  [{:keys [criteria] :as context}]
+(defmethod criterion->where :default
+  [[k :as criterion] {:keys [inputs]}]
+  [['?x k (get-in inputs criterion)]])
 
-  (pprint {::apply-criteria* criteria})
+(defmethod criterion->where :binary-pred
+  [[k [pred v]] {:keys [inputs]}]
+  (let [in (get-in inputs [k v])
+        ref (symbol (str "?" (name k)))]
+    [['?x k ref]
+     [(list (-> pred name symbol) ref in)]]))
 
-  (if-let [simp (c/simplify-and criteria)]
-    (apply-criteria* (assoc context :criteria simp))
-    (let [[conj & cs] criteria]
+(defmethod criterion->where :intersection
+  [[k [_ & cs]] {:keys [inputs]}]
+  (let [ref (symbol (str "?" (name k)))]
+    (apply vector
+           ['?x k ref]
+           (map (fn [[pred v]]
+                  [(list (-> pred name symbol) ref (get-in inputs [k v]))])
+                cs))))
 
-      (pprint {:inputs (extract-inputs criteria)})
+(defmulti ^:private criteria->where type-dispatch)
 
-      (reduce (fn [ctx criteria]
-                (apply-criteria*
-                  (assoc ctx
-                         :criteria criteria
-                         :conj conj)))
-              context
-              cs))))
+(defmethod criteria->where ::stow/map
+  [criteria opts]
+  (vec (mapcat #(criterion->where % opts) criteria)))
+
+(defmethod criteria->where ::stow/vector
+  [[conj & cs] opts]
+  (apply list
+         (-> conj name symbol)
+         (map #(criteria->where % opts) cs)))
 
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
 
-  (:query (apply-criteria* {:query query
-                            :criteria criteria
-                            :options (or options {})})))
+  (let [inputs-map (extract-inputs criteria)
+        [inputs args] (input-map->lists inputs-map)
+        where (criteria->where criteria (assoc options :inputs inputs-map))]
+    (assoc query
+           :in inputs
+           :args args
+           :where where)))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
