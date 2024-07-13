@@ -305,8 +305,12 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in :!= :=) :binary-pred
-          (:and :or)                 :conjunction
+          (:> :>= :< :<= :in :!= := :including)
+          :binary-pred
+
+          (:and :or)
+          :conjunction
+
           nil)))))
 
 (defmethod criterion->inputs :default
@@ -367,28 +371,40 @@
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k :as criterion] {:keys [inputs]}]
-  [['?x k (get-in inputs criterion)]])
+  [[k :as criterion] {:keys [inputs entity-ref]}]
+  [[entity-ref k (get-in inputs criterion)]])
 
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs]}]
-  [['?x k (get-in inputs [k v])]])
+  [[k [_ v]] {:keys [inputs entity-ref]}]
+  [[entity-ref k (get-in inputs [k v])]])
 
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs]}]
+  [[k [pred v]] {:keys [inputs entity-ref]}]
   (let [in (get-in inputs [k v])
         ref (symbol (str "?" (name k)))]
-    [['?x k ref]
+    [[entity-ref k ref]
      [(list (-> pred name symbol) ref in)]]))
 
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs]}]
+  [[k [_ & cs]] {:keys [inputs entity-ref]}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
-           ['?x k ref]
+           [entity-ref k ref]
            (map (fn [[pred v]]
                   [(list (-> pred name symbol) ref (get-in inputs [k v]))])
                 cs))))
+
+; TODO: I've conflated two concepts here that should probably be separated
+; - checking to see if a tuple is contained within a list of tuples (and whether or not it's a tuple probalby doesn't matter)
+; - creating a subquery for a map contained as a value in the top-level criteria map
+(defmethod criterion->where :entity-match
+  [[k [_ match]] {:keys [entity-ref inputs] :as opts}]
+  (if (map? match)
+    (let [other-ent-ref (symbol (str "?" (singular (name k))))]
+      (cons [entity-ref (remap k) other-ent-ref]
+            (map #(criterion->where % (assoc opts :entity-ref other-ent-ref))
+                 match)))
+    [[entity-ref k (get-in inputs [k match])]]))
 
 (defmulti ^:private criteria->where type-dispatch)
 
@@ -414,7 +430,9 @@
 
   (let [inputs-map (extract-inputs criteria)
         [inputs args] (input-map->lists inputs-map)
-        where (criteria->where criteria (assoc options :inputs inputs-map))]
+        where (criteria->where criteria (assoc options
+                                               :inputs inputs-map
+                                               :entity-ref '?x))]
     (assoc query
            :in inputs
            :args args
