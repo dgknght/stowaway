@@ -34,7 +34,7 @@
     (cond
       (map? v)    :model-ref
       (vector? v) (case (first v)
-                    :=                  :direct
+                    :=                  :explicit=
                     (:< :<= :> :>= :!=) :binary-pred
                     :and                :intersection
                     :or                 :union
@@ -134,7 +134,7 @@
   [query c inputs]
   (apply-criterion query (update-in c [1] :id) inputs))
 
-(defmethod apply-criterion :direct
+(defmethod apply-criterion :explicit=
   [query [k [_oper v]] inputs]
   (apply-simple-criterion query k v inputs))
 
@@ -305,8 +305,8 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in :!=) :binary-pred
-          (:and :or)              :conjunction)))))
+          (:> :>= :< :<= :in :!= :=) :binary-pred
+          (:and :or)                 :conjunction)))))
 
 (defmethod criterion->inputs :default
   [criterion]
@@ -368,6 +368,10 @@
 (defmethod criterion->where :default
   [[k :as criterion] {:keys [inputs]}]
   [['?x k (get-in inputs criterion)]])
+
+(defmethod criterion->where :explicit=
+  [[k [_ v]] {:keys [inputs]}]
+  [['?x k (get-in inputs [k v])]])
 
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs]}]
