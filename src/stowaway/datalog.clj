@@ -382,7 +382,9 @@
 
 (defmethod criterion->where :default
   [[k :as criterion] {:keys [inputs entity-ref]}]
-  [[entity-ref k (get-in inputs criterion)]])
+  (if (= :id k)
+    []
+    [[entity-ref k (get-in inputs criterion)]]))
 
 (defmethod criterion->where :explicit=
   [[k [_ v]] {:keys [inputs entity-ref]}]
