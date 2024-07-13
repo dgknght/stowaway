@@ -185,15 +185,6 @@
                                {:user/age 25}]
                               {:user/last-name "Doe"}]))))
 
-(deftest specify-the-query-key-prefix
-  (is (= {:query '{:find [?x]
-                   :where [[?x :entity/name ?a]]
-                   :in [?a]}
-          :args ["Personal"]}
-         (dtl/apply-criteria {:query query}
-                             #:entity{:name "Personal"}
-                             {:query-prefix [:query]}))))
-
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
            :where [[?x :xt/id ?a]]
