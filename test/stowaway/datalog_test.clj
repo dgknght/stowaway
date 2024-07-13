@@ -30,15 +30,15 @@
     (is (= '{:find [(pull ?x [*])]
              :where [[?x :entity/name ?name]]
              :in [?x]
-             :args ["101"]}
+             :args [101]}
            (dtl/apply-criteria '{:find [(pull ?x [*])]
                                  :where [[?x :entity/name ?name]]}
-                               {:id "101"}))))
+                               {:id 101}))))
   (testing "with explicit target entity"
     (is (= '{:find [(pull ?x [*])]
              :where [[?x :entity/name ?name]]
              :in [?x]
-             :args ["101"]}
+             :args [101]}
            (dtl/apply-criteria '{:find [(pull ?x [*])]
                                  :where [[?x :entity/name ?name]]}
                                {:id "101"}
