@@ -337,17 +337,19 @@
 (defmulti ^:private extract-inputs* type-dispatch)
 
 (defmethod extract-inputs* ::stow/map
-  [m next-ident existing]
+  [m {:keys [next-ident existing]}]
   (->> m
        (mapcat criterion->inputs)
        (reduce (fn [res [k v]]
                  (update-in res [k v] #(if %
-                                         %
-                                         (symbol (str "?" (next-ident))))))
+                                          %
+                                          (if (= :id k)
+                                            '?id
+                                            (symbol (str "?" (next-ident)))))))
                existing)))
 
 (defmethod extract-inputs* ::stow/vector
-  [[_ & cs] next-ident existing]
+  [[_ & cs] {:keys [next-ident existing]}]
   (reduce #(extract-inputs* %2 next-ident %1)
           existing
           cs))
@@ -358,10 +360,11 @@
       (nth vals (swap! index inc)))))
 
 (defn- extract-inputs
-  [criteria]
+  [criteria opts]
   (extract-inputs* criteria
-                   (dispense (map name [:a :b :c :d :e :f :g :h :i]))
-                   {}))
+                   (assoc opts
+                          :next-ident (dispense (map name [:a :b :c :d :e :f :g :h :i]))
+                          :existing {})))
 
 (defn- input-map->lists
   [m]
@@ -388,9 +391,14 @@
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs entity-ref]}]
   (let [in (get-in inputs [k v])
-        ref (symbol (str "?" (name k)))]
-    [[entity-ref k ref]
-     [(list (-> pred name symbol) ref in)]]))
+        ref (if (= :id k)
+              entity-ref
+              (symbol (str "?" (name k))))
+        ref-assignment (when-not (= :id k)
+                         [entity-ref k ref])]
+    (->> [ref-assignment
+          [(list (-> pred name symbol) ref in)]]
+         (filter identity))))
 
 (defmethod criterion->where :intersection
   [[k [_ & cs]] {:keys [inputs entity-ref]}]
@@ -430,29 +438,47 @@
                (-> conj name symbol)
                clauses)))))
 
+(defn- normalize-model-ref
+  [x]
+  (if (map-entry? x)
+    (let [[k v] x]
+      (cond
+        (c/model-ref? v)
+        (update-in x [1] (comp parse-id :id))
+
+        (= :id k)
+        (if (vector? v)
+          (update-in x [1 1] parse-id)
+          (update-in x [1] parse-id))
+
+        :else
+        x))
+    x))
+
 (defn- normalize-model-refs
   [criteria]
-  (postwalk (fn [x]
-              (if (c/model-ref? x)
-                (-> x :id parse-id)
-                x))
-            criteria))
+  (postwalk normalize-model-ref criteria))
+
+(def ^:private default-apply-criteria-options
+  {:entity-ref '?x})
 
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
-
-  (let [normalized (normalize-model-refs criteria)
-        inputs-map (extract-inputs normalized)
+  (let [opts (merge default-apply-criteria-options options)
+        normalized (normalize-model-refs criteria)
+        inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
-        where (criteria->where normalized (assoc options
-                                                 :inputs inputs-map
-                                                 :entity-ref '?x))]
-    (assoc query
-           :in inputs
-           :args args
-           :where where)))
+        where (criteria->where normalized (assoc opts
+                                                 :inputs inputs-map))]
+    (-> query
+        (assoc :in inputs
+               :args args)
+        (update-in [:where] (fn [w]
+                              (if w
+                                (vec (concat w where))
+                                where))))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
