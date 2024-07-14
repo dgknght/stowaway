@@ -150,8 +150,8 @@
 (deftest query-against-an-or-conjunction
   (testing "different fields"
     (is (= '{:find [?x]
-             :where (or [?x :user/first-name ?a]
-                        [?x :user/age ?b])
+             :where [(or [?x :user/first-name ?a]
+                         [?x :user/age ?b])]
              :in [?a ?b]
              :args ["John" 25]}
            (dtl/apply-criteria query
@@ -160,8 +160,8 @@
                                 {:user/age 25}]))))
   (testing "same field"
     (is (= '{:find [?x]
-             :where (or [?x :user/first-name ?a]
-                        [?x :user/first-name ?b])
+             :where [(or [?x :user/first-name ?a]
+                         [?x :user/first-name ?b])]
              :in [?a ?b]
              :args ["John" "Jane"]}
            (dtl/apply-criteria query
@@ -173,9 +173,9 @@
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
 (deftest query-against-a-complex-conjunction
   (is (= '{:find [?x]
-           :where (and [?x :user/last-name ?c]
-                       (or [?x :user/first-name ?a]
-                           [?x :user/age ?b]))
+           :where [(and (or [?x :user/first-name ?a]
+                            [?x :user/age ?b])
+                        [?x :user/last-name ?c])]
            :in [?a ?b ?c]
            :args ["John" 25 "Doe"]}
          (dtl/apply-criteria query

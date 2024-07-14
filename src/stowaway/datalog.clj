@@ -443,12 +443,13 @@
   [[conj & cs :as criteria] opts]
   (if-let [simplified (c/simplify-and criteria)]
     (criteria->where simplified opts)
-    (let [clauses (map #(criteria->where % opts) cs)]
-      (if (= :and conj)
-        (mapv first clauses)
-        (apply list
-               (-> conj name symbol)
-               clauses)))))
+    (let [where (mapcat #(criteria->where % opts) cs)]
+      (if (and (= :and conj)
+               (every? vector? where))
+        (vec where)
+        [(apply list
+                (-> conj name symbol)
+                where)]))))
 
 (defn- parse-id-in-criterion-value
   [v]
