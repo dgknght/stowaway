@@ -21,7 +21,7 @@
            :args ["John"]}
          (dtl/apply-criteria '{:find [?usr]}
                              #:user{:first-name "John"}
-                             {:vars {:user '?usr}}))))
+                             {:entity-ref '?usr}))))
 
 ; Common criteria 2: model id
 ; {:id "101"}
