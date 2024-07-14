@@ -343,9 +343,7 @@
        (reduce (fn [res [k v]]
                  (update-in res [k v] #(if %
                                           %
-                                          (if (= :id k)
-                                            '?id
-                                            (symbol (str "?" (next-ident)))))))
+                                          (next-ident))))
                existing)))
 
 (defmethod extract-inputs* ::stow/vector
@@ -363,7 +361,10 @@
   [criteria opts]
   (extract-inputs* criteria
                    (assoc opts
-                          :next-ident (dispense (map name [:a :b :c :d :e :f :g :h :i]))
+                          :next-ident (dispense (map (comp symbol
+                                                           #(str "?" %)
+                                                           name)
+                                                     [:a :b :c :d :e :f :g :h :i]))
                           :existing {})))
 
 (defn- input-map->lists
