@@ -2,7 +2,7 @@
   (:require [clojure.spec.alpha :as s]
             [clojure.pprint :refer [pprint]]
             [clojure.set :refer [difference]]
-            [clojure.walk :refer [postwalk]]
+            [clojure.walk :refer [prewalk]]
             [ubergraph.core :as uber]
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
@@ -322,9 +322,7 @@
 
 (defmethod criterion->inputs :default
   [criterion]
-  ; Mark this if it's a simple ID criterion so we can
-  ; perform specify the entity ref as the input value
-  [(update-in criterion [0] #(if (= :id %) ::id %))])
+  [criterion])
 
 (defmethod criterion->inputs :binary-pred
   [[k [_ v]]]
@@ -387,7 +385,13 @@
 
 (defmethod criterion->where :default
   [[k :as criterion] {:keys [inputs entity-ref remap]}]
-  (let [attr (get-in remap [k] k)]
+  ; we're handling :id with special logic, as it can be specified in the
+  ; :in clause as the entity reference directly for simple equality tests
+  ; We don't want to do that, though, if the attribute has been remapped
+  ; the remap is written by the caller and doesn't know about our special
+  ; handling for :id
+  (let [orig-k (if (= ::id k) :id k)
+        attr (get-in remap [orig-k] orig-k)]
     (if (= :id attr)
       []
       [[entity-ref
@@ -402,7 +406,7 @@
   [[k [pred v]] {:keys [inputs entity-ref remap]}]
   (let [in (get-in inputs [k v])
         attr (get-in remap [k] k)]
-    (if (= :id k)
+    (if (= :id attr)
       [[(list (-> pred name symbol) entity-ref in)]]
       (let [ref (symbol (str "?" (name k)))]
         [[entity-ref attr ref]
@@ -446,8 +450,14 @@
                (-> conj name symbol)
                clauses)))))
 
-(defn- normalize-model-ref
-  [x]
+(defn- parse-id-in-criterion-value
+  [v]
+  (if (vector? v)
+    (update-in v [1] parse-id)
+    (parse-id v)))
+
+(defn- normalize-criterion
+  [x {:keys [remap]}]
   (if (map-entry? x)
     (let [[k v] x]
       (cond
@@ -455,27 +465,30 @@
         (update-in x [1] (comp parse-id :id))
 
         (= :id k)
-        (if (vector? v)
-          (update-in x [1 1] parse-id)
-          (update-in x [1] parse-id))
+        (cond-> (update-in x [1] parse-id-in-criterion-value)
+          (not (or (vector? v)
+                   (remap k)))
+          (assoc 0 ::id)) ; this allows us to peform special handling for entity-ref later in the process
 
         :else
         x))
     x))
 
-(defn- normalize-model-refs
-  [criteria]
-  (postwalk normalize-model-ref criteria))
+(defn- normalize-criteria
+  [criteria opts]
+  (prewalk #(normalize-criterion % opts)
+            criteria))
 
 (def ^:private default-apply-criteria-options
-  {:entity-ref '?x})
+  {:entity-ref '?x
+   :remap {}})
 
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
   (let [opts (merge default-apply-criteria-options options)
-        normalized (normalize-model-refs criteria)
+        normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
         where (criteria->where normalized (assoc opts

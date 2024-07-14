@@ -187,8 +187,8 @@
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
-           :where [[?x :xt/id ?id]]
-           :in [?id]
+           :where [[?x :xt/id ?a]]
+           :in [?a]
            :args [123]}
          (dtl/apply-criteria query
                              {:id 123}
@@ -196,8 +196,8 @@
       "The :id can be remapped")
   (is (= '{:find [?x]
            :where [[?x :xt/id ?id]
-                   [(!= ?x ?id)]]
-           :in [?id]
+                   [(!= ?id ?a)]]
+           :in [?a]
            :args [123]}
          (dtl/apply-criteria query
                              {:id [:!= 123]}
