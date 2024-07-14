@@ -49,8 +49,8 @@
 (deftest apply-id-criterion-with-predicate
   (is (= '{:find [(pull ?x [*])]
            :where [[?x :entity/name ?name]
-                   [(!= ?x ?id)]]
-           :in [?id]
+                   [(!= ?x ?a)]]
+           :in [?a]
            :args [101]}
          (dtl/apply-criteria '{:find [(pull ?x [*])]
                                :where [[?x :entity/name ?name]]}

@@ -322,7 +322,9 @@
 
 (defmethod criterion->inputs :default
   [criterion]
-  [criterion])
+  ; Mark this if it's a simple ID criterion so we can
+  ; perform specify the entity ref as the input value
+  [(update-in criterion [0] #(if (= :id %) ::id %))])
 
 (defmethod criterion->inputs :binary-pred
   [[k [_ v]]]
@@ -337,13 +339,15 @@
 (defmulti ^:private extract-inputs* type-dispatch)
 
 (defmethod extract-inputs* ::stow/map
-  [m {:keys [next-ident existing]}]
+  [m {:keys [next-ident existing entity-ref]}]
   (->> m
        (mapcat criterion->inputs)
        (reduce (fn [res [k v]]
                  (update-in res [k v] #(if %
-                                          %
-                                          (next-ident))))
+                                         %
+                                         (if (= ::id k)
+                                           entity-ref
+                                           (next-ident)))))
                existing)))
 
 (defmethod extract-inputs* ::stow/vector
@@ -399,8 +403,7 @@
   (let [in (get-in inputs [k v])
         attr (get-in remap [k] k)]
     (if (= :id k)
-      [[entity-ref attr in]
-       [(list (-> pred name symbol) entity-ref in)]]
+      [[(list (-> pred name symbol) entity-ref in)]]
       (let [ref (symbol (str "?" (name k)))]
         [[entity-ref attr ref]
          [(list (-> pred name symbol) ref in)]]))))
