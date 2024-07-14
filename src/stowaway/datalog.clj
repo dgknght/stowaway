@@ -196,10 +196,16 @@
     (map? match)    (apply-map-match query k match)
     (vector? match) (apply-tuple-match query k match inputs)))
 
-(s/def ::args-key (s/coll-of keyword? :kind vector?))
-(s/def ::query-prefix (s/coll-of keyword :kind vector?))
-(s/def ::options (s/keys :opt-un [::args-key
-                                  ::query-prefix]))
+(s/def ::entity-ref symbol?)
+(s/def ::remap (s/map-of keyword? keyword?))
+(s/def ::target keyword?)
+(s/def ::relationships (s/coll-of (s/tuple keyword? keyword?) :kind set?))
+(s/def ::graph-apex keyword?)
+(s/def ::options (s/keys :opt-un [::entity-ref
+                                  ::remap
+                                  ::target
+                                  ::relationships
+                                  ::graph-apex]))
 
 (defmacro ^:private with-options
   [opts & body]
