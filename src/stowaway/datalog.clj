@@ -243,15 +243,15 @@
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
-  [criteria]
+  [criteria opts]
   (let [namespaces (c/namespaces criteria :as-keywords true)]
     (when (< 1 (count namespaces))
-      (let [source (or (:target *opts*)
+      (let [source (or (:target opts)
                        (throw (ex-info "No target specified for criteria."
-                                       {:options *opts*
+                                       {:options opts
                                         :criteria criteria})))
             targets (difference namespaces #{source})
-            rels (:relationships *opts*)
+            rels (:relationships opts)
             paths (g/shortest-paths source
                                     targets
                                     rels)]
@@ -262,11 +262,11 @@
   "Given a datalog query and a criteria (map or vector), when the criteria
   spans multiple namespaces, return the query with addition where clauses necessary
   to join the namespaces."
-  [query criteria]
+  [query criteria opts]
   (update-in query
              [:where]
              concat
-             (extract-joining-clauses criteria)))
+             (extract-joining-clauses criteria opts)))
 
 (defn- attr->sortable
   [shortest-path entities]
@@ -387,10 +387,19 @@
                      (update-in [1] conj input-val)))
                [[] []])))
 
+(defn- criterion-e
+  [k {:keys [entity-ref target]}]
+  (if target
+    (if (= (name target)
+           (namespace k))
+      entity-ref
+      (symbol (str "?" (namespace k))))
+    entity-ref))
+
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k :as criterion] {:keys [inputs entity-ref remap]}]
+  [[k :as criterion] {:keys [inputs remap] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
   ; :in clause as the entity reference directly for simple equality tests
   ; We don't want to do that, though, if the attribute has been remapped
@@ -400,29 +409,30 @@
         attr (get-in remap [orig-k] orig-k)]
     (if (= :id attr)
       []
-      [[entity-ref
+      [[(criterion-e k opts)
         attr
         (get-in inputs criterion)]])))
 
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs entity-ref remap]}]
-  [[entity-ref (get-in remap [k] k) (get-in inputs [k v])]])
+  [[k [_ v]] {:keys [inputs remap] :as opts}]
+  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
 
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs entity-ref remap]}]
+  [[k [pred v]] {:keys [inputs remap] :as opts}]
   (let [in (get-in inputs [k v])
-        attr (get-in remap [k] k)]
+        attr (get-in remap [k] k)
+        e-ref (criterion-e k opts)]
     (if (= :id attr)
-      [[(list (-> pred name symbol) entity-ref in)]]
+      [[(list (-> pred name symbol) e-ref in)]]
       (let [ref (symbol (str "?" (name k)))]
-        [[entity-ref attr ref]
+        [[e-ref attr ref]
          [(list (-> pred name symbol) ref in)]]))))
 
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs entity-ref remap]}]
+  [[k [_ & cs]] {:keys [inputs remap] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
-           [entity-ref (get-in remap [k] k) ref]
+           [(criterion-e k opts) (get-in remap [k] k) ref]
            (map (fn [[pred v]]
                   [(list (-> pred name symbol) ref (get-in inputs [k v]))])
                 cs))))
@@ -494,7 +504,9 @@
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
-  (let [opts (merge default-apply-criteria-options options)
+  (let [opts (merge default-apply-criteria-options
+                    {:target (c/single-ns criteria)}
+                    options)
         normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
@@ -506,7 +518,9 @@
         (update-in [:where] (fn [w]
                               (if w
                                 (vec (concat w where))
-                                where))))))
+                                where)))
+        (append-joining-clauses normalized opts)
+        (sort-where-clauses opts))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
