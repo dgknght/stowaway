@@ -187,12 +187,22 @@
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
-           :where [[?x :xt/id ?a]]
-           :in [?a]
+           :where [[?x :xt/id ?id]]
+           :in [?id]
            :args [123]}
          (dtl/apply-criteria query
                              {:id 123}
-                             {:remap {:id :xt/id}}))))
+                             {:remap {:id :xt/id}}))
+      "The :id can be remapped")
+  (is (= '{:find [?x]
+           :where [[?x :xt/id ?id]
+                   [(!= ?x ?id)]]
+           :in [?id]
+           :args [123]}
+         (dtl/apply-criteria query
+                             {:id [:!= 123]}
+                             {:remap {:id :xt/id}}))
+      "The :id can be remapped when a predicate is present"))
 
 (deftest apply-a-comparison-criterion
   (is (= '{:find [?x]

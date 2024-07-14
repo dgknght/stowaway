@@ -381,32 +381,34 @@
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k :as criterion] {:keys [inputs entity-ref]}]
-  (if (= :id k)
-    []
-    [[entity-ref k (get-in inputs criterion)]]))
+  [[k :as criterion] {:keys [inputs entity-ref remap]}]
+  (let [attr (get-in remap [k] k)]
+    (if (= :id attr)
+      []
+      [[entity-ref
+        attr
+        (get-in inputs criterion)]])))
 
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs entity-ref]}]
-  [[entity-ref k (get-in inputs [k v])]])
+  [[k [_ v]] {:keys [inputs entity-ref remap]}]
+  [[entity-ref (get-in remap [k] k) (get-in inputs [k v])]])
 
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs entity-ref]}]
+  [[k [pred v]] {:keys [inputs entity-ref remap]}]
   (let [in (get-in inputs [k v])
-        ref (if (= :id k)
-              entity-ref
-              (symbol (str "?" (name k))))
-        ref-assignment (when-not (= :id k)
-                         [entity-ref k ref])]
-    (->> [ref-assignment
-          [(list (-> pred name symbol) ref in)]]
-         (filter identity))))
+        attr (get-in remap [k] k)]
+    (if (= :id k)
+      [[entity-ref attr in]
+       [(list (-> pred name symbol) entity-ref in)]]
+      (let [ref (symbol (str "?" (name k)))]
+        [[entity-ref attr ref]
+         [(list (-> pred name symbol) ref in)]]))))
 
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs entity-ref]}]
+  [[k [_ & cs]] {:keys [inputs entity-ref remap]}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
-           [entity-ref k ref]
+           [entity-ref (get-in remap [k] k) ref]
            (map (fn [[pred v]]
                   [(list (-> pred name symbol) ref (get-in inputs [k v]))])
                 cs))))
@@ -415,10 +417,10 @@
 ; - checking to see if a tuple is contained within a list of tuples (and whether or not it's a tuple probalby doesn't matter)
 ; - creating a subquery for a map contained as a value in the top-level criteria map
 (defmethod criterion->where :entity-match
-  [[k [_ match]] {:keys [entity-ref inputs] :as opts}]
+  [[k [_ match]] {:keys [entity-ref inputs remap] :as opts}]
   (if (map? match)
     (let [other-ent-ref (symbol (str "?" (singular (name k))))]
-      (cons [entity-ref (remap k) other-ent-ref]
+      (cons [entity-ref (get-in remap [k] k) other-ent-ref]
             (map #(criterion->where % (assoc opts :entity-ref other-ent-ref))
                  match)))
     [[entity-ref k (get-in inputs [k match])]]))
