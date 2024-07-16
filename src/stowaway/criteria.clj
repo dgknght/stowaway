@@ -2,7 +2,8 @@
   (:require [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
             [clojure.set :refer [union
-                                 intersection]]))
+                                 intersection]]
+            [stowaway.util :refer [type-dispatch]]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -60,10 +61,10 @@
 
 (s/def ::criteria (s/multi-spec criteria type))
 
-(defmulti namespaces (fn [c & _] (type c)))
+(defmulti namespaces type-dispatch)
 
 (defmethod namespaces ::map
-  [m & {:keys [as-keywords]}]
+  [m & [{:keys [as-keywords]}]]
   (let [xform (if as-keywords keyword identity)]
     (->> (keys m)
          (map (comp xform
@@ -72,9 +73,9 @@
          (into #{}))))
 
 (defmethod namespaces ::vector
-  [[_oper & criterias]]
+  [[_oper & criterias] & [opts]]
   (->> criterias
-       (map namespaces)
+       (map #(namespaces % opts))
        (reduce union)))
 
 (defmulti extract-ns

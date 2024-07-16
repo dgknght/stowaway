@@ -21,7 +21,7 @@
     (is (= #{:user :order}
            (c/namespaces {:user/first-name "John"
                           :order/purchase-date "2010-01-01"}
-                         :as-keywords true)))))
+                         {:as-keywords true})))))
 
 (deftest extract-namespaces-from-a-criteria-vector
   (is (= #{"user" "order"}
