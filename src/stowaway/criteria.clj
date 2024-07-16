@@ -30,7 +30,8 @@
                      :<between
                      :<between>
                      :contained-by
-                     :including}) ; including maps to $elemMatch in mongo
+                     :including
+                     :including-match}) ; including-match maps to $elemMatch in mongo
 
 (defmethod criteria-value :default
   [_]

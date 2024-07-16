@@ -89,7 +89,7 @@
            :in [?a ?b]
            :args ["google" "abc123"]}
          (dtl/apply-criteria query
-                             {:user/identities [:including
+                             {:user/identities [:including-match
                                                 #:identity{:oauth-provider "google"
                                                            :oauth-id "abc123"}]}))))
 

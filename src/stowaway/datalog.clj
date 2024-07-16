@@ -45,7 +45,8 @@
                     (:< :<= :> :>= :!=) :binary-pred
                     :and                :intersection
                     :or                 :union
-                    :including          :entity-match))))
+                    :including          :including
+                    :including-match    :entity-match))))
 
 (defmulti apply-criterion dispatch-criterion)
 
@@ -244,7 +245,7 @@
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
   [criteria opts]
-  (let [namespaces (c/namespaces criteria :as-keywords true)]
+  (let [namespaces (c/namespaces criteria {:as-keywords true})]
     (when (< 1 (count namespaces))
       (let [source (or (:target opts)
                        (throw (ex-info "No target specified for criteria."
@@ -321,6 +322,9 @@
           (:> :>= :< :<= :in :!= := :including)
           :binary-pred
 
+          :including-match
+          :match
+
           (:and :or)
           :conjunction
 
@@ -333,6 +337,10 @@
 (defmethod criterion->inputs :binary-pred
   [[k [_ v]]]
   [[k v]])
+
+(defmethod criterion->inputs :match
+  [[_k [_ m]]]
+  (seq m))
 
 (defmethod criterion->inputs :conjunction
   [[k [_oper & criterions]]]
@@ -437,17 +445,16 @@
                   [(list (-> pred name symbol) ref (get-in inputs [k v]))])
                 cs))))
 
-; TODO: I've conflated two concepts here that should probably be separated
-; - checking to see if a tuple is contained within a list of tuples (and whether or not it's a tuple probalby doesn't matter)
-; - creating a subquery for a map contained as a value in the top-level criteria map
 (defmethod criterion->where :entity-match
-  [[k [_ match]] {:keys [entity-ref inputs remap] :as opts}]
-  (if (map? match)
-    (let [other-ent-ref (symbol (str "?" (singular (name k))))]
+  [[k [_ match]] {:keys [entity-ref remap] :as opts}]
+  (let [other-ent-ref (symbol (str "?" (singular (name k))))]
       (cons [entity-ref (get-in remap [k] k) other-ent-ref]
-            (map #(criterion->where % (assoc opts :entity-ref other-ent-ref))
-                 match)))
-    [[entity-ref k (get-in inputs [k match])]]))
+            (mapcat #(criterion->where % (assoc opts :entity-ref other-ent-ref))
+                    match))))
+
+(defmethod criterion->where :including
+  [[k [_ match]] {:keys [entity-ref inputs]}]
+  [[entity-ref k (get-in inputs [k match])]])
 
 (defmulti ^:private criteria->where type-dispatch)
 
