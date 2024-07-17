@@ -80,7 +80,7 @@
                              {:order/user {:id 101}}))))
 
 ; Common criteria 6: subquery against attributes
-; {:user/identities [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
+; {:user/identities [:including-match {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
 (deftest query-against-subquery-criteria
   (is (= '{:find [?x]
            :where [[?x :user/identities ?identity]

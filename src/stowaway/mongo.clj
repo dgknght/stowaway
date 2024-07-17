@@ -42,14 +42,15 @@
   (postwalk #(mongoize % options) m))
 
 (def oper-map
-  {:>         :$gt
-   :>=        :$gte
-   :<         :$lt
-   :<=        :$lte
-   :!=        :$ne
-   :or        :$or
-   :and       :$and
-   :including :$elemMatch})
+  {:>                :$gt
+   :>=               :$gte
+   :<                :$lt
+   :<=               :$lte
+   :!=               :$ne
+   :or               :$or
+   :and              :$and
+   :including        :$elemMatch
+   :including-match :$elemMatch})
 
 (defn ->mongo-operator
   [op]
