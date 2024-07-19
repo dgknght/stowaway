@@ -264,10 +264,12 @@
   spans multiple namespaces, return the query with addition where clauses necessary
   to join the namespaces."
   [query criteria opts]
-  (update-in query
-             [:where]
-             concat
-             (extract-joining-clauses criteria opts)))
+  (if-let [clauses (extract-joining-clauses criteria opts)]
+    (update-in query
+               [:where]
+               concat
+               clauses)
+    query))
 
 (defn- attr->sortable
   [shortest-path entities]
@@ -287,7 +289,8 @@
   the distance from the apex node in the 1st position and either a 1
   (if the attribute is an entity reference) or a 0 in the second."
   [clause shortest-path entities]
-  (if (list? (first clause))
+  (if (or (list? clause) ; TODO: Are both of these really possible?
+          (list? (first clause)))
     [999 0] ; a list is used for arbitrary predicates like comparisons, etc.
     (let [f (attr->sortable shortest-path entities)]
       (-> clause
@@ -520,14 +523,15 @@
         where (criteria->where normalized (assoc opts
                                                  :inputs inputs-map))]
     (-> query
-        (assoc :in inputs
-               :args args)
+        (update-in [:in] (fnil concat []) inputs)
+        (update-in [:args]  (fnil concat []) args)
         (update-in [:where] (fn [w]
                               (if w
                                 (vec (concat w where))
                                 where)))
         (append-joining-clauses normalized opts)
-        (sort-where-clauses opts))))
+        (sort-where-clauses opts)
+        (update-in [:where] vec))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
