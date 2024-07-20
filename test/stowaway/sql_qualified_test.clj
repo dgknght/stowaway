@@ -1,14 +1,12 @@
 (ns stowaway.sql-qualified-test
   (:require [clojure.test :refer [deftest is testing]]
-            [clojure.data :refer [diff]]
             [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
-            [honey.sql.helpers :as h]
-            [honey.sql :as hsql]
             [stowaway.geometry :as geo]
-            [stowaway.sql-qualified :as sql]
-            [clojure.pprint :as pp]))
+            [stowaway.sql-qualified :as sql]))
 
+; Common criteria 1: single field match
+; #:user{:last-name "Doe"}
 (deftest query-a-single-table-with-simple-single-field-equality
   (is (= ["SELECT users.* FROM users WHERE users.last_name = ?" "Doe"]
          (sql/->query #:user{:last-name "Doe"}))))
@@ -53,6 +51,28 @@
                        :sort [:user/last-name]
                        :count true})))))
 
+; Common criteria 2: model id
+; {:user/id "101"}
+(deftest query-against-a-simple-id
+  (is (= ["SELECT users.* FROM users WHERE users.id = ?"
+          "101"]
+         (sql/->query {:user/id "101"})))
+  (is (= ["SELECT users.* FROM users WHERE users.id = ?"
+          101]
+         (sql/->query {:user/id "101"}
+                      {:coerce-id #(Integer/parseInt %)}))
+      "An id can be coerced"))
+
+; Common criteria 3: query with a predicate
+; {:user/id [:!= "101"]}
+(deftest apply-id-criterion-with-predicate
+  (is (= ["SELECT users.* FROM users WHERE users.id <> ?"
+          "101"]
+         (sql/->query {:user/id [:!= "101"]}))))
+
+; Common criteria 4: multiple simple equality criteria
+; #:user{:first-name "John"
+;        :age 25}
 (deftest query-against-multiple-simple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
           "John"
@@ -60,6 +80,43 @@
          (sql/->query #:user{:first-name "John"
                              :age 25}))))
 
+; Common criteria 5: model reference
+; {:order/user {:id 101}}
+(deftest query-against-criteria-with-a-model-reference
+  (is (= ["SELECT orders.* FROM orders WHERE orders.user_id = ?"
+          101]
+         (sql/->query {:order/user {:id 101}}))))
+
+; Common criteria 6: subquery against attributes
+; {:user/identities [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
+(deftest query-against-subquery-criteria
+  (is (= ["SELECT users.* FROM users WHERE id IN (SELECT identities.user_id FROM identities WHERE (identities.oauth_provider = ?) AND (identities.oauth_id = ?))"
+          "google"
+          "abc123"]
+         (sql/->query {:user/identities [:including
+                                         #:identity{:oauth-provider "google"
+                                                    :oauth-id "abc123"}]}))))
+
+; Common criteria 7: "and" conjunction
+; [:and {:user/first-name "John"} {:user/age 25}]
+(deftest query-against-an-and-conjunction
+  (testing "redundant"
+    (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.age = ?)"
+            "John"
+            25]
+           (sql/->query [:and
+                         {:user/first-name "John"}
+                         {:user/age 25}]))))
+  (testing "unmatchable"
+    (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) AND (users.first_name = ?)"
+            "John"
+            "Jane"]
+           (sql/->query [:and
+                         {:user/first-name "John"}
+                         {:user/first-name "Jane"}])))))
+
+; Common criteria 8: "or" conjunction
+; [:or {:user/first-name "John"} {:user/age 25}]
 (deftest query-against-a-union-of-multiple-equality-criteria
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.age = ?)"
           "John"
@@ -67,6 +124,19 @@
          (sql/->query [:or
                        {:user/first-name "John"}
                        {:user/age 25}]))))
+
+; Common criteria 9: complex conjunction
+; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
+(deftest query-against-a-complex-conjunction
+  (is (= ["SELECT users.* FROM users WHERE ((users.first_name = ?) OR (users.age = ?)) AND (users.last_name = ?)"
+          "John"
+          25
+          "Doe"]
+         (sql/->query [:and
+                       [:or
+                        {:user/first-name "John"}
+                        {:user/age 25}]
+                       {:user/last-name "Doe"}]))))
 
 (deftest query-against-a-union-of-values-for-a-single-field
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.first_name = ?)"
@@ -180,6 +250,7 @@
                                 [:= :transactions.transaction_date :attachments.transaction_date]]}}))))
 
 (deftest query-against-a-point
-  (is (= ["SELECT locations.* FROM locations WHERE ? @> locations.center" (geo/->Circle (geo/->Point 2 2) 3)]
+  (is (= ["SELECT locations.* FROM locations WHERE ? @> locations.center"
+          (geo/->Circle (geo/->Point 2 2) 3)]
          (sql/->query {:location/center [:contained-by :?geoloc]}
                       {:named-params {:geoloc (geo/->Circle (geo/->Point 2 2) 3)}}))))

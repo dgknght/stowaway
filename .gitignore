@@ -11,4 +11,5 @@ pom.xml.asc
 .hgignore
 .hg/
 .clj-kondo/
+!.clj-kondo/config.edn
 .lsp/

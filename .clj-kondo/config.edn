@@ -1,0 +1,17 @@
+{:linters {:unused-referred-var {:exclude {clojure.pprint [pprint]
+                                           cljs.pprint [pprint]}}
+           :unused-namespace {:exclude [clojure.pprint
+                                        cljs.pprint]}
+           :unresolved-symbol {:exclude [(stowaway.core/with-storage [s])
+                                         (clojure.test/is [valid?])]}
+           :clojure-lsp/unused-public-var {:exclude #{stowaway.core/with-storage
+                                                      stowaway.core/with-transacted-storage
+                                                      stowaway.mongo.queries/criteria->query
+                                                      stowaway.mongo.pipelines/criteria->pipeline
+                                                      stowaway.implicit/with-storage
+                                                      stowaway.implicit/with-transacted-storage
+                                                      stowaway.implicit/create
+                                                      stowaway.implicit/select
+                                                      stowaway.implicit/update
+                                                      stowaway.implicit/delete
+                                                      stowaway.implicit/delete-by}}}}

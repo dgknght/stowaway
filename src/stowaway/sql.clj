@@ -3,7 +3,8 @@
             [camel-snake-kebab.core :refer [->snake_case_string
                                             ->kebab-case-keyword]]
             [honey.sql.helpers :as h]
-            [honey.sql :as sql]))
+            [honey.sql :as sql]
+            [stowaway.inflection :refer [plural]]))
 
 (derive clojure.lang.PersistentVector ::vector)
 (derive clojure.lang.PersistentArrayMap ::map)
@@ -11,24 +12,6 @@
 
 (sql/register-op! (keyword "@>"))
 (sql/register-op! (keyword "&&"))
-
-; TODO: move this to an inflection library
-(defn- apply-word-rule
-  [word {pattern :pattern f :fn}]
-  (when-let [match (re-find pattern word)]
-    (f match)))
-
-(defn plural
-  [word]
-  (let [rules [{:pattern #"(?i)\Achild\z"
-                :fn #(str % "ren")}
-               {:pattern #"(?i)(.+)s\z"
-                :fn #(str (second %) "ses")}
-               {:pattern #"(?i)(.+)y\z"
-                :fn #(str (second %) "ies")}
-               {:pattern #".+"
-                :fn #(str % "s")}]]
-    (some (partial apply-word-rule word) rules)))
 
 (defn get-int
   [m k]

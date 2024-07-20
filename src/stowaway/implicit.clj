@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [update])
   (:require [stowaway.core :as core]))
 
-(def ^:dynamic *storage*)
+(def ^:dynamic *storage* nil)
 
 (defn unbound?
   [value]
