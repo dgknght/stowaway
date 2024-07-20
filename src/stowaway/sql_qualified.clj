@@ -251,7 +251,7 @@
   (when (seq relationships)
     (->> (g/shortest-paths table
                            (extract-tables criteria opts)
-                           relationships)
+                           :relationships relationships)
          (mapcat #(path-to-join % opts))
          (reduce (fn [res [join-type join]]
                    (update-in res [join-type] (fnil into []) join))

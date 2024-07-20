@@ -92,7 +92,7 @@
     m
     (if-let [paths (seq (g/shortest-paths collection
                                           targets
-                                          relationships))]
+                                          :relationships relationships))]
       (assoc m :paths paths)
       (throw (ex-info "Unable to connect the target collection to all elements of the criteria" m)))))
 

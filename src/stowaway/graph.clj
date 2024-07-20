@@ -9,8 +9,9 @@
     (ga/shortest-path graph from to)))
 
 (defn- shortest-path-fn
-  [from relationships]
-  (let [graph (apply g/graph relationships)]
+  [from {:keys [relationships graph]}]
+  (let [graph (or graph
+                  (apply g/graph relationships))]
     (comp #(shortest-path graph from %)
           keyword)))
 
@@ -29,9 +30,9 @@
 (defn shortest-paths
   "Given a set of nodes, return the list of shortest paths that
   connects all of them."
-  [from nodes relationships]
+  [from nodes & {:as opts}]
   (->> nodes
-       (map (shortest-path-fn from relationships))
+       (map (shortest-path-fn from opts))
        (filter identity)
        (sort-by count >)
        (reduce drop-duplicative [])))

@@ -244,7 +244,7 @@
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
-  [criteria opts]
+  [criteria {:as opts :keys [graph]}]
   (let [namespaces (c/namespaces criteria {:as-keywords true})]
     (when (< 1 (count namespaces))
       (let [source (or (:target opts)
@@ -255,7 +255,7 @@
             rels (:relationships opts)
             paths (g/shortest-paths source
                                     targets
-                                    rels)]
+                                    :graph graph)]
         (mapcat #(path->join-clauses % source rels)
                 paths)))))
 
@@ -308,9 +308,8 @@
   "Given a query with a where clause, sort the clauses with the aim of putting
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
-  [query {:keys [relationships graph-apex]}]
-  (let [graph (apply uber/graph relationships) ; TODO: Rework this so we're not creating the graph twice
-        entities (->> relationships seq flatten set)
+  [query {:keys [relationships graph-apex graph]}]
+  (let [entities (->> relationships seq flatten set)
         shortest #(shortest-path graph graph-apex %)]
     (update-in query
                [:where]
@@ -516,7 +515,9 @@
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
   (let [opts (merge default-apply-criteria-options
-                    {:target (c/single-ns criteria)}
+                    {:target (c/single-ns criteria)
+                     :graph (when-let [rels (:relationships options)]
+                              (apply uber/graph rels))}
                     options)
         normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
