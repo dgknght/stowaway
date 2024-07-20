@@ -144,4 +144,5 @@
        append-stages
        append-limit-stage
        append-count-stage
-       :stages)))
+       :stages
+       doall)))
