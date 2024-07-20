@@ -230,6 +230,16 @@
          (dtl/apply-criteria query
                              #:user{:name [:!= "John"]}))))
 
+(deftest prioritize-relationship-where-clauses
+  (is (= '{:find [?x]
+           :where [[?x :user/email ?a]
+                   (not [?x :model/deleted true])]
+           :in [?a]
+           :args ["john@doe.com"]}
+         (dtl/apply-criteria '{:find [?x]
+                               :where [(not [?x :model/deleted true])]}
+                             {:user/email "john@doe.com"}))))
+
 (deftest apply-an-intersection-criterion
   (is (= '{:find [?x]
            :where [[?x :transaction/transaction-date ?transaction-date]
