@@ -401,8 +401,9 @@
 (defn- criterion-e
   [k {:keys [entity-ref target]}]
   (if target
-    (if (= (name target)
-           (namespace k))
+    (if (or (= :id k)
+            (= (name target)
+               (namespace k)))
       entity-ref
       (symbol (str "?" (namespace k))))
     entity-ref))

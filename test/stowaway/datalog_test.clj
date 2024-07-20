@@ -54,7 +54,15 @@
            :args [101]}
          (dtl/apply-criteria '{:find [(pull ?x [*])]
                                :where [[?x :entity/name ?name]]}
-                             {:id [:!= "101"]}))))
+                             {:id [:!= "101"]})))
+  (is (= '{:find [(pull ?x [*])]
+           :where [[?x :user/email ?a]
+                   [(!= ?x ?b)]]
+           :in [?a ?b]
+           :args ["john@doe.com" 101]}
+         (dtl/apply-criteria '{:find [(pull ?x [*])]}
+                             {:user/email "john@doe.com"
+                              :id [:!= "101"]}))))
 
 ; Common criteria 4: multiple simple equality criteria
 ; #:user{:first-name "John"
