@@ -89,6 +89,26 @@
                    {(->mongo-operator op) v})
                  cs)}})
 
+(defmethod adjust-complex-criterion :between
+  [[f [_ lower upper]]]
+  {:$and [{f {:$gte lower}}
+          {f {:$lte upper}}]})
+
+(defmethod adjust-complex-criterion :<between
+  [[f [_ lower upper]]]
+  {:$and [{f {:$gt lower}}
+          {f {:$lte upper}}]})
+
+(defmethod adjust-complex-criterion :between>
+  [[f [_ lower upper]]]
+  {:$and [{f {:$gte lower}}
+          {f {:$lt upper}}]})
+
+(defmethod adjust-complex-criterion :<between>
+  [[f [_ lower upper]]]
+  {:$and [{f {:$gt lower}}
+          {f {:$lt upper}}]})
+
 (defn- adjust-complex-criteria
   [criteria]
   (->> criteria
