@@ -58,7 +58,9 @@
 
 (defmethod criteria ::vector
   [_]
-  (s/tuple ::conjunction ::criteria ::criteria)) ; TODO: How to allow more than two?
+  (s/cat
+    :conjunction ::conjunction
+    :rest (s/+ ::criteria)))
 
 (s/def ::criteria (s/multi-spec criteria type))
 
