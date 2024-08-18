@@ -43,7 +43,11 @@
                     :and                :intersection
                     :or                 :union
                     :including          :including
-                    :including-match    :entity-match))))
+                    :including-match    :entity-match
+                    (:between
+                     :<between
+                     :between>
+                     :<between>)        :range))))
 
 (defn- id?
   "Returns true if the given keyword specifies an entity id"
@@ -185,8 +189,8 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in :!= := :including)
-          :binary-pred
+          (:> :>= :< :<= :in :!= := :including :between :<between :between> :<between>)
+          :pred
 
           :including-match
           :match
@@ -200,9 +204,11 @@
   [criterion]
   [criterion])
 
-(defmethod criterion->inputs :binary-pred
-  [[k [_ v]]]
-  [[k v]])
+(defmethod criterion->inputs :pred
+  [[k [_ & vs]]]
+  (mapv (fn [v]
+         [k v])
+       vs))
 
 (defmethod criterion->inputs :match
   [[_k [_ m]]]
@@ -302,6 +308,22 @@
       (let [ref (symbol (str "?" (name k)))]
         [[e-ref attr ref]
          [(list (-> pred name symbol) ref in)]]))))
+
+(defmethod criterion->where :range
+  [[k [pred v1 v2]] {:keys [inputs remap] :as opts}]
+  (let [in1 (get-in inputs [k v1])
+        in2 (get-in inputs [k v2])
+        attr (get-in remap [k] k)
+        e-ref (criterion-e k opts)
+        ref (symbol (str "?" (name k)))
+        [pred1 pred2] (case pred
+                        :between '[>= <=]
+                        :<between '[> <=]
+                        :between> '[>= <]
+                        :<between> '[> <])]
+    [[e-ref attr ref]
+     [(list pred1 ref in1)]
+     [(list pred2 ref in2)]]))
 
 (defmethod criterion->where :intersection
   [[k [_ & cs]] {:keys [inputs remap] :as opts}]

@@ -216,13 +216,13 @@
       ":<between is exclusive on the lower vound and inclusive of the upper")
   (is (= '{:find [?x]
            :where [[?x :transaction/date ?date]
-                   [(=> ?date ?a)]
+                   [(>= ?date ?a)]
                    [(< ?date ?b)]]
            :in [?a ?b]
            :args ["2020-01-01" "2020-12-31"]}
          (dtl/apply-criteria query
                              {:transaction/date [:between> "2020-01-01" "2020-12-31"]}))
-      ":between> is inclusive on the lower vound and exclusive of the upper")
+      ":between> is inclusive on the lower bound and exclusive of the upper")
   (is (= '{:find [?x]
            :where [[?x :transaction/date ?date]
                    [(> ?date ?a)]
