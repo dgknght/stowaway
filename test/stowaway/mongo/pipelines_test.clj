@@ -200,6 +200,8 @@
                                 :collection :commodities
                                 :coerce-id #(Integer/parseInt %)}))))
 
+; Common criteria 10: between predicates
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]}
 (deftest convert-a-between-operator
   (is (= [{:$match {:$and [{:date {:$gte "2020-01-01"}}
                            {:date {:$lte "2020-12-31"}}]}}]
