@@ -193,6 +193,46 @@
                                {:user/age 25}]
                               {:user/last-name "Doe"}]))))
 
+; Common criteria 10: between predicates
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]}
+(deftest query-against-a-between-predicate
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(>= ?date ?a)]
+                   [(<= ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:between "2020-01-01" "2020-12-31"]}))
+      ":between is inclusive on both ends")
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(> ?date ?a)]
+                   [(<= ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:<between "2020-01-01" "2020-12-31"]}))
+      ":<between is exclusive on the lower vound and inclusive of the upper")
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(=> ?date ?a)]
+                   [(< ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:between> "2020-01-01" "2020-12-31"]}))
+      ":between> is inclusive on the lower vound and exclusive of the upper")
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(> ?date ?a)]
+                   [(< ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:<between> "2020-01-01" "2020-12-31"]}))
+      ":<between> is exclusive on both ends"))
+
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
            :where [[?x :xt/id ?a]]
