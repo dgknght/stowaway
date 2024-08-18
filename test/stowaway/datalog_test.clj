@@ -308,6 +308,32 @@
                                                [:entity :commodity]}
                               :graph-apex :user}))))
 
+(deftest query-combines-redundant-and-groups
+  (is (= '{:find [?x]
+           :in [?a ?b ?c ?d]
+           :args ["2020-01-01" "2020-01-03" 101 102]
+           :where
+           [[?x :transaction/date ?date]
+            [(>= ?date ?a)]
+            [(<= ?date ?b)]
+            (or
+              [?transaction-item
+               :transaction-item/debit-account
+               ?c]
+              [?transaction-item
+               :transaction-item/credit-account
+               ?d])]}
+         (dtl/apply-criteria query
+                             [:and
+                              #:transaction{:date
+                                            [:between
+                                             "2020-01-01"
+                                             "2020-01-03"]}
+                              [:or
+                               #:transaction-item{:debit-account {:id 101}}
+                               #:transaction-item{:credit-account {:id 102}}]]
+                             {:target :transaction}))))
+
 (deftest apply-options
   (testing "limit"
     (is (= '{:find [?x]

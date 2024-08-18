@@ -396,6 +396,14 @@
   {:entity-ref '?x
    :remap {}})
 
+(defn- strip-redundant-and
+  [where]
+  (if (and (= 1 (count where))
+           (list? (first where))
+           (= 'and (ffirst where)))
+    (apply vector (rest (first where)))
+    where))
+
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
@@ -408,8 +416,9 @@
         normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
-        where (criteria->where normalized (assoc opts
-                                                 :inputs inputs-map))]
+        where (strip-redundant-and
+                (criteria->where normalized (assoc opts
+                                                 :inputs inputs-map)))]
     (-> query
         (update-in [:in] (fnil concat []) inputs)
         (update-in [:args]  (fnil concat []) args)
