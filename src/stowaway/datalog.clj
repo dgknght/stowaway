@@ -41,7 +41,6 @@
                     :=                  :explicit=
                     (:< :<= :> :>= :!=) :binary-pred
                     :and                :intersection
-                    :or                 :union
                     :including          :including
                     :including-match    :entity-match
                     (:between
@@ -356,12 +355,16 @@
   (if-let [simplified (c/simplify-and criteria)]
     (criteria->where simplified opts)
     (let [where (mapcat #(criteria->where % opts) cs)]
-      (if (and (= :and conj)
-               (every? vector? where))
-        (vec where)
-        [(apply list
-                (-> conj name symbol)
-                where)]))))
+      (case conj
+        :and
+        (if (every? vector? where)
+          (vec where)
+          [(apply list
+                  (-> conj name symbol)
+                  where)])
+
+        :or
+        [(apply list 'or-join (mapv last where) where)]))))
 
 (defn- parse-id-in-criterion-value
   [v]

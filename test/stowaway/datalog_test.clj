@@ -158,8 +158,9 @@
 (deftest query-against-an-or-conjunction
   (testing "different fields"
     (is (= '{:find [?x]
-             :where [(or [?x :user/first-name ?a]
-                         [?x :user/age ?b])]
+             :where [(or-join [?a ?b]
+                              [?x :user/first-name ?a]
+                              [?x :user/age ?b])]
              :in [?a ?b]
              :args ["John" 25]}
            (dtl/apply-criteria query
@@ -168,8 +169,9 @@
                                 {:user/age 25}]))))
   (testing "same field"
     (is (= '{:find [?x]
-             :where [(or [?x :user/first-name ?a]
-                         [?x :user/first-name ?b])]
+             :where [(or-join [?a ?b]
+                              [?x :user/first-name ?a]
+                              [?x :user/first-name ?b])]
              :in [?a ?b]
              :args ["John" "Jane"]}
            (dtl/apply-criteria query
@@ -181,9 +183,10 @@
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
 (deftest query-against-a-complex-conjunction
   (is (= '{:find [?x]
-           :where [(and (or [?x :user/first-name ?a]
-                            [?x :user/age ?b])
-                        [?x :user/last-name ?c])]
+           :where [[?x :user/last-name ?c]
+                   (or-join [?a ?b]
+                            [?x :user/first-name ?a]
+                            [?x :user/age ?b])]
            :in [?a ?b ?c]
            :args ["John" 25 "Doe"]}
          (dtl/apply-criteria query
@@ -316,7 +319,7 @@
            [[?x :transaction/date ?date]
             [(>= ?date ?a)]
             [(<= ?date ?b)]
-            (or
+            (or-join [?c ?d]
               [?transaction-item
                :transaction-item/debit-account
                ?c]
