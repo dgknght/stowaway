@@ -135,3 +135,18 @@
   (every-pred map?
               one?
               #(= :id (first (keys %)))))
+
+(defmulti apply-to
+  "Given a criteria (map or vector) apply the given function to each map"
+  (fn [c _] (type c)))
+
+ (defmethod apply-to ::map
+   [criteria f]
+   (f criteria))
+
+(defmethod apply-to ::vector
+  [[oper & cs :as criteria] f]
+  (with-meta (apply vector
+                    oper
+                    (map #(apply-to % f) cs))
+             (meta criteria)))

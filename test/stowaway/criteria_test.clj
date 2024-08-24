@@ -1,5 +1,6 @@
 (ns stowaway.criteria-test
   (:require [clojure.test :refer [deftest is testing assert-expr do-report]]
+            [clojure.string :as str]
             [clojure.spec.alpha :as s]
             [stowaway.criteria :as c]))
 
@@ -135,3 +136,27 @@
       "A map without an :id attribute is not a model ref")
   (is (not (c/model-ref? [:id 101]))
       "A vector is not a model ref"))
+
+(deftest apply-a-fn-to-criteria
+  (let [f (fn [m]
+            (if (contains? m :user/name)
+              (update-in m
+                         [:user/name]
+                         #(str/lower-case %))
+              m))]
+    (is (= {:user/name "john"}
+           (c/apply-to {:user/name "JoHn"}
+                       f))
+        "The fn is applied directly to a map")
+    (let [x (c/apply-to ^:testing [:or
+                                   {:user/name "JoHn"}
+                                   {:user/age 25}]
+                        f)]
+      (is (= [:or
+              {:user/name "john"}
+              {:user/age 25}]
+             x)
+          "The fn is applied to maps within the vector")
+      (is (= {:testing true}
+             (meta x))
+          "The metadata is preserved"))))
