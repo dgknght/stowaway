@@ -86,7 +86,7 @@
                               {:order/user {:id 101}}
                               {:user/last-name "Doe"}])
       "A vector starting with :or and containing value criteria maps is valid")
-  (is (valid? ::c/criteria {:transaction/items [:including {:item/account {:id 101}}]})
+  (is (valid? ::c/criteria {:transaction/items [:including-match {:item/account {:id 101}}]})
       "A criteria can specify a match of sub-query items using a model ref")
   (is (not (s/valid? ::c/criteria [:fish
                                    {:order/user {:id 101}}
