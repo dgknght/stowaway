@@ -138,6 +138,30 @@
                         {:user/age 25}]
                        {:user/last-name "Doe"}]))))
 
+; Common criteria 10: between predicates
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]}
+(deftest convert-a-between-operator
+  (is (= ["SELECT transactions.* FROM transactions WHERE (transactions.date >= ?) AND (transactions.date <= ?)"
+          "2020-01-01"
+          "2020-12-31"]
+         (sql/->query #:transaction{:date [:between "2020-01-01" "2020-12-31"]}))
+      ":between is inclusive on both ends")
+  (is (= ["SELECT transactions.* FROM transactions WHERE (transactions.date > ?) AND (transactions.date <= ?)"
+          "2020-01-01"
+          "2020-12-31"]
+         (sql/->query #:transaction{:date [:<between "2020-01-01" "2020-12-31"]}))
+      ":<between is exclusive of the lower bound and inclusive of the upper")
+  (is (= ["SELECT transactions.* FROM transactions WHERE (transactions.date >= ?) AND (transactions.date < ?)"
+          "2020-01-01"
+          "2020-12-31"]
+         (sql/->query #:transaction{:date [:between> "2020-01-01" "2020-12-31"]}))
+      ":between> is inclusive of the lower bound and exclusive of the upper")
+  (is (= ["SELECT transactions.* FROM transactions WHERE (transactions.date > ?) AND (transactions.date < ?)"
+          "2020-01-01"
+          "2020-12-31"]
+         (sql/->query #:transaction{:date [:<between> "2020-01-01" "2020-12-31"]}))
+      ":<between> is exclusive of the lower bound and exclusive of the upper"))
+
 (deftest query-against-a-union-of-values-for-a-single-field
   (is (= ["SELECT users.* FROM users WHERE (users.first_name = ?) OR (users.first_name = ?)"
           "Jane"

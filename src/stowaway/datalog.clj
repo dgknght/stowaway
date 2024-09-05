@@ -18,9 +18,6 @@
     (parse-long x)
     x))
 
-(def ^:private concat*
-  (fnil (comp vec concat) []))
-
 (def ^:private conj*
   (fnil conj []))
 
@@ -44,11 +41,12 @@
                     :=                  :explicit=
                     (:< :<= :> :>= :!=) :binary-pred
                     :and                :intersection
-                    :or                 :union
                     :including          :including
-                    :including-match    :entity-match))))
-
-(defmulti apply-criterion dispatch-criterion)
+                    :including-match    :entity-match
+                    (:between
+                     :<between
+                     :between>
+                     :<between>)        :range))))
 
 (defn- id?
   "Returns true if the given keyword specifies an entity id"
@@ -65,137 +63,6 @@
                   "x"
                   (name k))
                 suffix))))
-
-(defn- ref-var
-  "Given a simple keyword representing a criteria namespace (model),
-  return a symbol that will be used to reference entities of that
-  type in the query.
-
-  E.g.:
-
-  (ref-var :user) => ?user
-
-  ; with *opts* {:vars {:user ?u}}
-  (ref-var :user) => ?u"
-  ([k] (ref-var k *opts*))
-  ([k opts]
-   {:pre [k
-          (nil? (namespace k))]}
-
-   (let [target (:target opts)
-         vars (or (:vars opts) {})
-         n (name k)]
-     (or (vars k)
-         (if (or (nil? target)
-                 (= target (keyword n))
-                 (= :id k))
-           '?x
-           (symbol (str "?" n)))))))
-
-(defn- append-where
-  "Appends clauses to an existing where clause.
-
-  When given a predicate, appends an assignment clause and a predicate clause.
-
-  [[?x :foo/bar ?bar]
-   [(>= ?bar ?bar-in)]]
-
-  When not given a predicate, appends an assignment clause (which is implicitly
-  an equality test as well).
-
-  [[?x :foo/bar ?bar-in]]"
-  ; NB if we weren't expecting to have (pull ?x [*]) in the :find clause,
-  ; then we'd need to bind to the reference without in "-in" suffix.
-  ([w k input]
-   (append-where w k input nil))
-  ([where k input pred]
-   (let [attr (attr-ref k)
-         assignment-ref (if pred
-                          attr
-                          input)
-         ref-var (ref-var (or (-> k namespace keyword) ; an :id key won't have a namespace. should we allow this?
-                              (:target *opts*)
-                              k))
-         assignment (when-not (id? k)
-                      [ref-var
-                       (remap k)
-                       assignment-ref])
-         predicate (when pred
-                     [(list (symbol (name pred))
-                            attr
-                            input)])]
-     (concat* where
-              (filterv identity
-                       [assignment
-                        predicate])))))
-
-(defn- apply-simple-criterion
-  [query k v inputs]
-  (let [input (get-in inputs [k v])]
-    (update-in query [:where] append-where k input)))
-
-(defmethod apply-criterion :default
-  [query [k v] inputs]
-  (apply-simple-criterion query k v inputs))
-
-(defmethod apply-criterion :model-ref
-  [query c inputs]
-  (apply-criterion query (update-in c [1] :id) inputs))
-
-(defmethod apply-criterion :explicit=
-  [query [k [_oper v]] inputs]
-  (apply-simple-criterion query k v inputs))
-
-(defmethod apply-criterion :binary-pred
-  [query [k [pred v]] inputs]
-  (let [input (get-in inputs k v)]
-    (update-in query [:where] append-where k input pred)))
-
-(defmethod apply-criterion :intersection
-  [query [k [_and & vs]] _inputs]
-  ; 1. establish a reference to the model attribute
-  ; 2. apply each comparison to the reference
-  ; 3. decide if we need to wrap with (and ...)
-  (let [attr (name k)
-        input-refs (map (comp symbol
-                              #(str "?" attr "-in-" %)
-                              #(+ 1 %))
-                        (range (count vs)))
-        attr-ref (attr-ref k)]
-    (update-in query
-               [:where]
-               concat*
-               (cons
-                 ['?x (remap k) attr-ref]
-                 (->> vs
-                      (interleave input-refs)
-                      (partition 2)
-                      (map (fn [[input-ref [oper]]]
-                             [(list (-> oper name symbol)
-                                    attr-ref
-                                    input-ref)])))))))
-
-(defn- apply-map-match
-  [query k match]
-  (let [other-ent-ref (symbol (str "?" (singular (name k))))]
-    (reduce (fn [q [k v]]
-              (let [val-in (symbol (str "?" (name k) "-in"))]
-                (-> q
-                    (update-in [:where] conj [other-ent-ref k val-in])
-                    (update-in [:in] conj* val-in)
-                    (update-in [:args] conj* v))))
-            (update-in query [:where] conj* ['?x (remap k) other-ent-ref])
-            match)))
-
-(defn- apply-tuple-match
-  [query k match inputs]
-  (apply-simple-criterion query k match inputs))
-
-(defmethod apply-criterion :entity-match
-  [query [k [_ match]] inputs]
-  (cond
-    (map? match)    (apply-map-match query k match)
-    (vector? match) (apply-tuple-match query k match inputs)))
 
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
@@ -321,8 +188,8 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in :!= := :including)
-          :binary-pred
+          (:> :>= :< :<= :in :!= := :including :between :<between :between> :<between>)
+          :pred
 
           :including-match
           :match
@@ -336,9 +203,11 @@
   [criterion]
   [criterion])
 
-(defmethod criterion->inputs :binary-pred
-  [[k [_ v]]]
-  [[k v]])
+(defmethod criterion->inputs :pred
+  [[k [_ & vs]]]
+  (mapv (fn [v]
+         [k v])
+       vs))
 
 (defmethod criterion->inputs :match
   [[_k [_ m]]]
@@ -439,6 +308,22 @@
         [[e-ref attr ref]
          [(list (-> pred name symbol) ref in)]]))))
 
+(defmethod criterion->where :range
+  [[k [pred v1 v2]] {:keys [inputs remap] :as opts}]
+  (let [in1 (get-in inputs [k v1])
+        in2 (get-in inputs [k v2])
+        attr (get-in remap [k] k)
+        e-ref (criterion-e k opts)
+        ref (symbol (str "?" (name k)))
+        [pred1 pred2] (case pred
+                        :between '[>= <=]
+                        :<between '[> <=]
+                        :between> '[>= <]
+                        :<between> '[> <])]
+    [[e-ref attr ref]
+     [(list pred1 ref in1)]
+     [(list pred2 ref in2)]]))
+
 (defmethod criterion->where :intersection
   [[k [_ & cs]] {:keys [inputs remap] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
@@ -470,12 +355,16 @@
   (if-let [simplified (c/simplify-and criteria)]
     (criteria->where simplified opts)
     (let [where (mapcat #(criteria->where % opts) cs)]
-      (if (and (= :and conj)
-               (every? vector? where))
-        (vec where)
-        [(apply list
-                (-> conj name symbol)
-                where)]))))
+      (case conj
+        :and
+        (if (every? vector? where)
+          (vec where)
+          [(apply list
+                  (-> conj name symbol)
+                  where)])
+
+        :or
+        [(apply list 'or-join (mapv last where) where)]))))
 
 (defn- parse-id-in-criterion-value
   [v]
@@ -510,6 +399,14 @@
   {:entity-ref '?x
    :remap {}})
 
+(defn- strip-redundant-and
+  [where]
+  (if (and (= 1 (count where))
+           (list? (first where))
+           (= 'and (ffirst where)))
+    (apply vector (rest (first where)))
+    where))
+
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
@@ -522,8 +419,9 @@
         normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
-        where (criteria->where normalized (assoc opts
-                                                 :inputs inputs-map))]
+        where (strip-redundant-and
+                (criteria->where normalized (assoc opts
+                                                 :inputs inputs-map)))]
     (-> query
         (update-in [:in] (fnil concat []) inputs)
         (update-in [:args]  (fnil concat []) args)

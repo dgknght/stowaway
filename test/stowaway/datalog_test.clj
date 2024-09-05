@@ -158,8 +158,9 @@
 (deftest query-against-an-or-conjunction
   (testing "different fields"
     (is (= '{:find [?x]
-             :where [(or [?x :user/first-name ?a]
-                         [?x :user/age ?b])]
+             :where [(or-join [?a ?b]
+                              [?x :user/first-name ?a]
+                              [?x :user/age ?b])]
              :in [?a ?b]
              :args ["John" 25]}
            (dtl/apply-criteria query
@@ -168,8 +169,9 @@
                                 {:user/age 25}]))))
   (testing "same field"
     (is (= '{:find [?x]
-             :where [(or [?x :user/first-name ?a]
-                         [?x :user/first-name ?b])]
+             :where [(or-join [?a ?b]
+                              [?x :user/first-name ?a]
+                              [?x :user/first-name ?b])]
              :in [?a ?b]
              :args ["John" "Jane"]}
            (dtl/apply-criteria query
@@ -181,9 +183,10 @@
 ; [:and [:or {:user/first-name "John"} {:user/age 25}] {:user/last-name "Doe"}]
 (deftest query-against-a-complex-conjunction
   (is (= '{:find [?x]
-           :where [(and (or [?x :user/first-name ?a]
-                            [?x :user/age ?b])
-                        [?x :user/last-name ?c])]
+           :where [[?x :user/last-name ?c]
+                   (or-join [?a ?b]
+                            [?x :user/first-name ?a]
+                            [?x :user/age ?b])]
            :in [?a ?b ?c]
            :args ["John" 25 "Doe"]}
          (dtl/apply-criteria query
@@ -192,6 +195,46 @@
                                {:user/first-name "John"}
                                {:user/age 25}]
                               {:user/last-name "Doe"}]))))
+
+; Common criteria 10: between predicates
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]}
+(deftest query-against-a-between-predicate
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(>= ?date ?a)]
+                   [(<= ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:between "2020-01-01" "2020-12-31"]}))
+      ":between is inclusive on both ends")
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(> ?date ?a)]
+                   [(<= ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:<between "2020-01-01" "2020-12-31"]}))
+      ":<between is exclusive on the lower vound and inclusive of the upper")
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(>= ?date ?a)]
+                   [(< ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:between> "2020-01-01" "2020-12-31"]}))
+      ":between> is inclusive on the lower bound and exclusive of the upper")
+  (is (= '{:find [?x]
+           :where [[?x :transaction/date ?date]
+                   [(> ?date ?a)]
+                   [(< ?date ?b)]]
+           :in [?a ?b]
+           :args ["2020-01-01" "2020-12-31"]}
+         (dtl/apply-criteria query
+                             {:transaction/date [:<between> "2020-01-01" "2020-12-31"]}))
+      ":<between> is exclusive on both ends"))
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
@@ -267,6 +310,32 @@
                               :relationships #{[:user :entity]
                                                [:entity :commodity]}
                               :graph-apex :user}))))
+
+(deftest query-combines-redundant-and-groups
+  (is (= '{:find [?x]
+           :in [?a ?b ?c ?d]
+           :args ["2020-01-01" "2020-01-03" 101 102]
+           :where
+           [[?x :transaction/date ?date]
+            [(>= ?date ?a)]
+            [(<= ?date ?b)]
+            (or-join [?c ?d]
+              [?transaction-item
+               :transaction-item/debit-account
+               ?c]
+              [?transaction-item
+               :transaction-item/credit-account
+               ?d])]}
+         (dtl/apply-criteria query
+                             [:and
+                              #:transaction{:date
+                                            [:between
+                                             "2020-01-01"
+                                             "2020-01-03"]}
+                              [:or
+                               #:transaction-item{:debit-account {:id 101}}
+                               #:transaction-item{:credit-account {:id 102}}]]
+                             {:target :transaction}))))
 
 (deftest apply-options
   (testing "limit"

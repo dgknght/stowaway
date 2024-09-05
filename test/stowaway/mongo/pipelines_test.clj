@@ -199,3 +199,23 @@
                                {:limit 1
                                 :collection :commodities
                                 :coerce-id #(Integer/parseInt %)}))))
+
+; Common criteria 10: between predicates
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]}
+(deftest convert-a-between-operator
+  (is (= [{:$match {:$and [{:date {:$gte "2020-01-01"}}
+                           {:date {:$lte "2020-12-31"}}]}}]
+         (m/criteria->pipeline #:transaction{:date [:between "2020-01-01" "2020-12-31"]}))
+      ":between is inclusive on both ends")
+  (is (= [{:$match {:$and [{:date {:$gt "2020-01-01"}}
+                           {:date {:$lte "2020-12-31"}}]}}]
+         (m/criteria->pipeline #:transaction{:date [:<between "2020-01-01" "2020-12-31"]}))
+      ":<between is exclusive of the lower bound and inclusive of the upper")
+  (is (= [{:$match {:$and [{:date {:$gte "2020-01-01"}}
+                           {:date {:$lt "2020-12-31"}}]}}]
+         (m/criteria->pipeline #:transaction{:date [:between> "2020-01-01" "2020-12-31"]}))
+      ":between> is inclusive of the lower bound and exclusive of the upper")
+  (is (= [{:$match {:$and [{:date {:$gt "2020-01-01"}}
+                           {:date {:$lt "2020-12-31"}}]}}]
+         (m/criteria->pipeline #:transaction{:date [:<between> "2020-01-01" "2020-12-31"]}))
+      ":<between> is exclusive of the lower bound and exclusive of the upper"))
