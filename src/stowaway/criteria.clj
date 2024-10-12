@@ -37,10 +37,13 @@
   [_]
   (s/spec any?))
 
+(defmethod criteria-value nil
+  [_]
+  (s/spec nil?))
+
 (defmethod criteria-value ::map
   [_]
-  (s/map-of #(= :id %)
-            ::criteria-value))
+  (s/and map? #(contains? % :id)))
 
 (defmethod criteria-value ::vector
   [_]
