@@ -292,7 +292,7 @@
 ; SELECT raccounts.*
 ; FROM raccounts
 (deftest query-with-recursion
-  (is (= ["WITH raccounts AS (SELECT accounts.* FROM accounts WHERE accounts.name = ? UNION SELECT accounts.* FROM accounts INNER JOIN raccounts ON accounts.parent_id = raccounts.id) SELECT raccounts.* FROM raccounts"
+  (is (= ["WITH RECURSIVE cte AS (SELECT accounts.* FROM accounts WHERE accounts.name = ? UNION SELECT accounts.* FROM accounts INNER JOIN cte ON accounts.parent_id = cte.id) SELECT cte.* FROM cte"
           "Checking"]
          (sql/->query {:account/name "Checking"}
-                      {:recursion [:accounts/id :accounts/parent-id]}))))
+                      {:recursion [:parent-id :id]}))))

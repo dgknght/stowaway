@@ -287,23 +287,17 @@
       (select-count opts)))
 
 
+; I can't think of a good name for the recrusion keys,
+; so I'm just addressing them by position for now.
 (defn- recursive-query
-  [criteria table {:keys [recursion] :as opts}]
-  #_(h/with [[:raccounts
-           (h/union (simple-query criteria table opts)
-                    (-> (h/select (key-join table ".*"))
-                        (h/from table)
-                        (h/join :raccounts [:= :accounts.parent_id :raccounts.id])))]]
-    (-> (h/select)
-        (h/from :raccounts)))
-  '{with ((raccounts {union ({select accounts.*
-                               from accounts
-                               where (= accounts.name "Checking")}
-                              {select accounts.*
-                               from accounts
-                               join (raccounts (= accounts.parent_id raccounts.id))})}))
-     select raccounts.*
-     from raccounts})
+  [criteria table {[k1 k2] :recursion :as opts}]
+  (-> (h/with-recursive
+        [:cte (h/union (simple-query criteria table opts)
+                       (-> (h/select (key-join table ".*"))
+                           (h/from table)
+                           (h/join :cte [:= (key-join table "." k1) (key-join :cte "." k2)])))])
+      (h/select :cte.*)
+      (h/from :cte)))
 
 (defn ->query
   "Translate a criteria map into a SQL query"
