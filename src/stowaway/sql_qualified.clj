@@ -286,16 +286,24 @@
       (select-custom opts)
       (select-count opts)))
 
+
 (defn- recursive-query
   [criteria table {:keys [recursion] :as opts}]
+  #_(h/with [[:raccounts
+           (h/union (simple-query criteria table opts)
+                    (-> (h/select (key-join table ".*"))
+                        (h/from table)
+                        (h/join :raccounts [:= :accounts.parent_id :raccounts.id])))]]
+    (-> (h/select)
+        (h/from :raccounts)))
   '{with ((raccounts {union ({select accounts.*
-                              from accounts
-                              where (= accounts.name "Checking")}
-                             {select accounts.*
-                              from accounts
-                              join (raccounts (= accounts.parent_id raccounts.id))})}))
-    select raccounts.*
-    from raccounts})
+                               from accounts
+                               where (= accounts.name "Checking")}
+                              {select accounts.*
+                               from accounts
+                               join (raccounts (= accounts.parent_id raccounts.id))})}))
+     select raccounts.*
+     from raccounts})
 
 (defn ->query
   "Translate a criteria map into a SQL query"
