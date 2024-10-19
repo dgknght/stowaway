@@ -267,6 +267,36 @@
     (seq outer) (assoc :outer-join outer)
     (seq inner) (assoc :join inner)))
 
+(defn- simple-query
+  [criteria table opts]
+  (-> (h/select (key-join table ".*"))
+      (h/from table)
+      (h/where (->where criteria opts))
+      (join (->joins criteria
+                     (-> opts
+                         (assoc :table table)
+                         (update-in [:full-results]
+                                    (fn [models]
+                                      (->> models
+                                           (map #(model->table-key % opts))
+                                           (into #{})))))))
+      (apply-sort opts)
+      (apply-limit opts)
+      (apply-offset opts)
+      (select-custom opts)
+      (select-count opts)))
+
+(defn- recursive-query
+  [criteria table {:keys [recursion] :as opts}]
+  '{with ((raccounts {union ({select accounts.*
+                              from accounts
+                              where (= accounts.name "Checking")}
+                             {select accounts.*
+                              from accounts
+                              join (raccounts (= accounts.parent_id raccounts.id))})}))
+    select raccounts.*
+    from raccounts})
+
 (defn ->query
   "Translate a criteria map into a SQL query"
   [criteria & [{:keys [target named-params skip-format?] :as opts}]]
@@ -278,20 +308,6 @@
         fmt (if skip-format?
               identity
               #(hsql/format % {:params named-params}))]
-    (-> (h/select (key-join table ".*"))
-        (h/from table)
-        (h/where (->where criteria opts))
-        (join (->joins criteria
-                       (-> opts
-                           (assoc :table table)
-                           (update-in [:full-results]
-                                      (fn [models]
-                                        (->> models
-                                             (map #(model->table-key % opts))
-                                             (into #{})))))))
-        (apply-sort opts)
-        (apply-limit opts)
-        (apply-offset opts)
-        (select-custom opts)
-        (select-count opts)
-        fmt)))
+    (fmt (if (:recursion opts)
+           (recursive-query criteria table opts)
+           (simple-query criteria table opts)))))
