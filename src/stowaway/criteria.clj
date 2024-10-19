@@ -1,4 +1,5 @@
 (ns stowaway.criteria
+  (:refer-clojure :exclude [update-in])
   (:require [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
             [clojure.set :refer [union
@@ -95,7 +96,7 @@
                                        (comp #(map keyword %)
                                              (juxt namespace name)))
                           (filter #(= n (ffirst %)))
-                          (map #(update-in % [0] (comp keyword second)))
+                          (map #(clojure.core/update-in % [0] (comp keyword second)))
                           seq)]
     (into {} entries)))
 
@@ -139,17 +140,55 @@
               one?
               #(= :id (first (keys %)))))
 
+(defmulti ^:private apply-to-value*
+  "Apply a function with optional arguments to a criterion value. If the value
+  contains an explicit operator, like {:user/age [:>= 21]}, the function is
+  applied to the values after the operator"
+  (fn [v & _]
+    (type v)))
+
+(defmethod apply-to-value* :default
+  [v f args]
+  (apply f v args))
+
+(defmethod apply-to-value* ::vector
+  [[oper & vs] f args]
+  (apply vector oper (map #(apply f % args)
+                          vs)))
+
+(defn- apply-to-value
+  [f args]
+  (fn [v]
+    (apply-to-value* v f args)))
+
+(defn- deep-contains?
+  [m ks]
+  (if (= 1 (count ks))
+    (contains? m (first ks))
+    (deep-contains? (get-in m (take 1 ks))
+                    (rest ks))))
+
+(defn update-in
+  "Given a criteria map, a key sequence and a function, update the value at the
+  specified key, accounting for a value that includes an explicit operation,
+  like {:user/age [:>= 21]}. Additional, if the specified criteria map does not
+  contain the specified key, no action is performed."
+  [c ks f & args]
+  (if (deep-contains? c ks)
+    (clojure.core/update-in c ks (apply-to-value f args))
+    c))
+
 (defmulti apply-to
   "Given a criteria (map or vector) apply the given function to each map"
   (fn [c _] (type c)))
 
  (defmethod apply-to ::map
-   [criteria f]
-   (f criteria))
+   [criteria f & args]
+   (apply f criteria args))
 
 (defmethod apply-to ::vector
-  [[oper & cs :as criteria] f]
+  [[oper & cs :as criteria] f & args]
   (with-meta (apply vector
                     oper
-                    (map #(apply-to % f) cs))
+                    (map #(apply apply-to % f args) cs))
              (meta criteria)))

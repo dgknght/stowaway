@@ -139,11 +139,9 @@
 
 (deftest apply-a-fn-to-criteria
   (let [f (fn [m]
-            (if (contains? m :user/name)
-              (update-in m
+            (c/update-in m
                          [:user/name]
-                         #(str/lower-case %))
-              m))]
+                         #(str/lower-case %)))]
     (is (= {:user/name "john"}
            (c/apply-to {:user/name "JoHn"}
                        f))
@@ -159,4 +157,7 @@
           "The fn is applied to maps within the vector")
       (is (= {:testing true}
              (meta x))
-          "The metadata is preserved"))))
+          "The metadata is preserved"))
+    (is (= {:user/name [:>= "john"]}
+           (c/apply-to {:user/name [:>= "JoHn"]} f))
+        "The fn is applied to values within an operation vector")))
