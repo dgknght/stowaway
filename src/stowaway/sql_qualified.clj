@@ -43,9 +43,10 @@
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
   in the form of table_name.column_name"
-  [k opts]
+  [k {:keys [target] :as opts}]
   (let [field (name k)
-        model (namespace k)
+        model (or (namespace k)
+                  target)
         table-name (model->table (keyword model) opts)]
     (keyword (->> [(name table-name) field]
                   (filter identity)
