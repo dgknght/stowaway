@@ -315,14 +315,32 @@
            (recursive-query criteria table opts)
            (simple-query criteria table opts)))))
 
+(defn- join-update
+  [sql table joins]
+  (if (seq joins)
+    (-> sql
+        (assoc :from table)
+        (join joins))
+    sql))
+
 (defn ->update
   [changes criteria & {:as opts :keys [target]}]
   (let [target (or target
-                   (keyword (single-ns criteria))
-                   (throw (IllegalArgumentException. "Unable to determine the query target")))
-        table (model->table target opts)]
-    (hsql/format {:update table
-                  :set changes
-                  :where (->where
-                           criteria
-                           opts)})))
+                   (keyword (single-ns changes))
+                   (throw (IllegalArgumentException. "Unable to determine the update target")))
+        table (model->table target opts)
+        joins (->joins criteria
+                       (-> opts
+                           (assoc :table table)
+                           (update-in [:full-results]
+                                      (fn [models]
+                                        (->> models
+                                             (map #(model->table-key % opts))
+                                             (into #{}))))))]
+    (hsql/format
+      (cond-> {:update table
+               :set changes
+               :where (->where
+                        criteria
+                        opts)}
+        (seq joins) (join-update table joins)))))
