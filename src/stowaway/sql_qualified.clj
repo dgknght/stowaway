@@ -314,3 +314,15 @@
     (fmt (if (:recursion opts)
            (recursive-query criteria table opts)
            (simple-query criteria table opts)))))
+
+(defn ->update
+  [changes criteria & {:as opts :keys [target]}]
+  (let [target (or target
+                   (keyword (single-ns criteria))
+                   (throw (IllegalArgumentException. "Unable to determine the query target")))
+        table (model->table target opts)]
+    (hsql/format {:update table
+                  :set changes
+                  :where (->where
+                           criteria
+                           opts)})))

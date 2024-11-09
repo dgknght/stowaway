@@ -296,3 +296,13 @@
           "Checking"]
          (sql/->query {:account/name "Checking"}
                       {:recursion [:parent-id :id]}))))
+
+(deftest update-multiple-rows
+  (is (= ["UPDATE users SET last_name = ? WHERE (users.first_name IN (?, ?)) AND (users.age = ?)"
+          "Doe"
+          "Jane"
+          "John"
+          30]
+         (sql/->update {:user/last-name "Doe"}
+                       {:user/first-name [:in ["Jane" "John"]]
+                        :user/age 30}))))
