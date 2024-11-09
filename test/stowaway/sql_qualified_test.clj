@@ -296,3 +296,22 @@
           "Checking"]
          (sql/->query {:account/name "Checking"}
                       {:recursion [:parent-id :id]}))))
+
+(deftest update-multiple-rows
+  (testing "single table update"
+    (is (= ["UPDATE users SET last_name = ? WHERE (users.first_name IN (?, ?)) AND (users.age = ?)"
+            "Doe"
+            "Jane"
+            "John"
+            30]
+           (sql/->update {:user/last-name "Doe"}
+                         {:user/first-name [:in ["Jane" "John"]]
+                          :user/age 30}))))
+  (testing "update a table with a where clause that joins"
+    (is (= ["UPDATE orders SET discount = ? FROM orders AS x INNER JOIN users ON users.id = x.user_id WHERE users.first_name IN (?, ?)"
+            0.1M
+            "Jane"
+            "John"]
+           (sql/->update {:order/discount 0.1M}
+                         {:user/first-name [:in ["Jane" "John"]]}
+                         :relationships #{[:users :orders]})))))

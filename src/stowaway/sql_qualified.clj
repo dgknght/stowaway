@@ -43,9 +43,10 @@
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
   in the form of table_name.column_name"
-  [k opts]
+  [k {:keys [target] :as opts}]
   (let [field (name k)
-        model (namespace k)
+        model (or (namespace k)
+                  target)
         table-name (model->table (keyword model) opts)]
     (keyword (->> [(name table-name) field]
                   (filter identity)
@@ -205,16 +206,17 @@
 
 (defn- ->join
   "Given an edge (two tables in any order), return the honeysql join clause."
-  [edge {:keys [joins]
-         :or {joins {}}
+  [edge {:keys [joins aliases]
+         :or {joins {}
+              aliases {}}
          :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
   (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (key-join t1 ".id")
-         (key-join t2 "." (-> t1 name singular) "_id")])))
+         (key-join (get-in aliases [t1] t1) ".id")
+         (key-join (get-in aliases [t2] t2) "." (-> t1 name singular) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -313,3 +315,34 @@
     (fmt (if (:recursion opts)
            (recursive-query criteria table opts)
            (simple-query criteria table opts)))))
+
+(defn- join-update
+  [sql table alias joins]
+  (if (seq joins)
+    (-> sql
+        (assoc :from [[table alias]])
+        (join joins))
+    sql))
+
+(defn ->update
+  [changes criteria & {:as opts :keys [target]}]
+  (let [target (or target
+                   (keyword (single-ns changes))
+                   (throw (IllegalArgumentException. "Unable to determine the update target")))
+        table (model->table target opts)
+        joins (->joins criteria
+                       (-> opts
+                           (assoc :table table
+                                  :aliases {table :x})
+                           (update-in [:full-results]
+                                      (fn [models]
+                                        (->> models
+                                             (map #(model->table-key % opts))
+                                             (into #{}))))))]
+    (hsql/format
+      (cond-> {:update table
+               :set changes
+               :where (->where
+                        criteria
+                        opts)}
+        (seq joins) (join-update table 'x joins)))))
