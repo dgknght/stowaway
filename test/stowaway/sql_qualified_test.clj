@@ -308,7 +308,7 @@
                          {:user/first-name [:in ["Jane" "John"]]
                           :user/age 30}))))
   (testing "update a table with a where clause that joins"
-    (is (= ["UPDATE orders SET discount = ? FROM orders INNER JOIN users ON users.id = orders.user_id WHERE users.first_name IN (?, ?)"
+    (is (= ["UPDATE orders SET discount = ? FROM orders AS x INNER JOIN users ON users.id = x.user_id WHERE users.first_name IN (?, ?)"
             0.1M
             "Jane"
             "John"]
