@@ -95,6 +95,15 @@
 
 (declare ->query)
 
+; For keywords, if they have a namespace, assument it is a 
+; column reference. Otherwise, assume it's a value and should
+; be converted to a string
+(defmethod map-entry->statements ::stow/keyword
+  [[k v]]
+  [[:= k (if (namespace v)
+           v
+           (name v))]])
+
 (defmethod map-entry->statements ::stow/vector
   [[k [oper & [v1 v2 :as values]]]]
   (case oper
@@ -302,7 +311,12 @@
       (h/from :cte)))
 
 (defn ->query
-  "Translate a criteria map into a SQL query"
+  "Translate a criteria map into a SQL query
+  
+  Note that when map values are keywords, some assumptions are made.
+  
+  If a keyword has a namespace, it is assumed to be a column reference. A keyword
+  without a namespace is assumed to be a value that must be converted to a string."
   [criteria & [{:keys [target named-params skip-format?] :as opts}]]
   {:pre [(s/valid? ::c/criteria criteria)]}
   (let [target (or target
