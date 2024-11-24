@@ -6,6 +6,7 @@
 (derive clojure.lang.PersistentHashMap  ::map)
 (derive clojure.lang.PersistentArrayMap ::map)
 (derive clojure.lang.MapEntry           ::map-entry)
+(derive clojure.lang.Keyword            ::keyword)
 
 (defprotocol Storage
   "This protocol defines the abstract CRUD operations to be used

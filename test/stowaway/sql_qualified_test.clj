@@ -315,3 +315,7 @@
            (sql/->update {:order/discount 0.1M}
                          {:user/first-name [:in ["Jane" "John"]]}
                          :relationships #{[:users :orders]})))))
+
+(deftest handle-keyword-values
+  (is (= ["SELECT users.* FROM users WHERE users.first_name = ?", "Jane"]
+         (sql/->query {:user/first-name :Jane}))))
