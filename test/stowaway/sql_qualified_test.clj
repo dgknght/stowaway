@@ -297,6 +297,13 @@
          (sql/->query {:account/name "Checking"}
                       {:recursion [:parent-id :id]}))))
 
+(deftest handle-keyword-values
+  (is (= ["SELECT users.* FROM users WHERE users.first_name = ?", "Jane"]
+         (sql/->query {:user/first-name :Jane}))
+      "A non-namespaced keyword is coverted to a string")
+  (is (= ["SELECT users.* FROM users WHERE users.first_name IN (?, ?)", "Jane", "John"]
+         (sql/->query {:user/first-name [:in [:Jane :John]]}))))
+
 (deftest update-multiple-rows
   (testing "single table update"
     (is (= ["UPDATE users SET last_name = ? WHERE (users.first_name IN (?, ?)) AND (users.age = ?)"
@@ -315,7 +322,3 @@
            (sql/->update {:order/discount 0.1M}
                          {:user/first-name [:in ["Jane" "John"]]}
                          :relationships #{[:users :orders]})))))
-
-(deftest handle-keyword-values
-  (is (= ["SELECT users.* FROM users WHERE users.first_name = ?", "Jane"]
-         (sql/->query {:user/first-name :Jane}))))
