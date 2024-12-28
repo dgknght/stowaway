@@ -53,15 +53,6 @@
                   (map ->snake_case)
                   (str/join ".")))))
 
-(defn- select-custom
-  [sql {:keys [select] :as opts}]
-  (if (seq select)
-    (let [cols (map #(->col-ref % opts) select)]
-      (-> sql
-          (dissoc :select)
-          (assoc :select cols)))
-    sql))
-
 (defn- normalize-sort-spec
   [sort-spec]
   (if (vector? sort-spec)
@@ -76,6 +67,25 @@
                                      normalize-sort-spec)
                                sort))
     sql))
+
+(defn- ->seq
+  [x]
+  (when x
+    (if (sequential? x)
+      x
+      [x])))
+
+(defn- pluralize-namespace
+  [k]
+  (keyword (plural (namespace k))
+           (name k)))
+
+(defn apply-select
+  [sql {:keys [select-also]}]
+  (cond-> sql
+    select-also
+    (update-in [:select] concat (map pluralize-namespace
+                                     (->seq select-also)))))
 
 (defn- subquery?
   [expr]
@@ -258,11 +268,18 @@
               [(join-type t1 t2 opts)
                [t2 (->join rel opts)]]))))
 
+(defn- option-namespaces
+  [{:keys [select-also]}]
+  (when select-also
+    (map namespace (->seq select-also))))
+
 (defn- extract-tables
   [criteria opts]
-  (map (comp #(model->table-key % opts)
-             keyword)
-       (namespaces criteria)))
+  (->> (namespaces criteria)
+       (concat (option-namespaces opts))
+       set
+       (map (comp #(model->table-key % opts)
+                  keyword))))
 
 (defn ->joins
   "Given a criteria map, return a sequence of join clauses that
@@ -299,8 +316,11 @@
     (seq inner) (assoc :join inner)))
 
 (defn- simple-query
-  [criteria table opts]
-  (-> (h/select (key-join table ".*"))
+  [criteria table {:as opts :keys [select]}]
+  (-> {:select (if select
+                 (map pluralize-namespace
+                      (->seq select))
+                 [(key-join table ".*")])}
       (h/from table)
       (h/where (->where criteria opts))
       (join (->joins criteria
@@ -311,10 +331,10 @@
                                       (->> models
                                            (map #(model->table-key % opts))
                                            (into #{})))))))
+      (apply-select opts)
       (apply-sort opts)
       (apply-limit opts)
       (apply-offset opts)
-      (select-custom opts)
       (select-count opts)))
 
 

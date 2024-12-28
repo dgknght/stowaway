@@ -279,6 +279,32 @@
          (sql/->query {:location/center [:contained-by :?geoloc]}
                       {:named-params {:geoloc (geo/->Circle (geo/->Point 2 2) 3)}}))))
 
+(deftest specify-select-clause
+  (is (= ["SELECT transaction_items.quantity FROM transaction_items WHERE transaction_items.reconciliation_id = ?"
+          101]
+         (sql/->query {:transaction-item/reconciliation {:id 101}}
+                      {:select :transaction-item/quantity}))
+      "The entire select clause can be specified")
+  (is (= ["SELECT transaction_items.quantity, transaction_items.value FROM transaction_items WHERE transaction_items.reconciliation_id = ?"
+          101]
+         (sql/->query {:transaction-item/reconciliation {:id 101}}
+                      {:select [:transaction-item/quantity
+                                :transaction-item/value]}))
+      "The entire select clause can be specified")
+  (is (= ["SELECT transaction_items.*, transactions.description FROM transaction_items INNER JOIN transactions ON transactions.id = transaction_items.transaction_id WHERE transaction_items.reconciliation_id = ?"
+          101]
+         (sql/->query {:transaction-item/reconciliation {:id 101}}
+                      {:select-also :transaction/description
+                       :relationships #{[:transactions :transaction_items]}}))
+      "An additional select column can be specified")
+  (is (= ["SELECT transaction_items.*, transactions.description, transactions.memo FROM transaction_items INNER JOIN transactions ON transactions.id = transaction_items.transaction_id WHERE transaction_items.reconciliation_id = ?"
+          101]
+         (sql/->query {:transaction-item/reconciliation {:id 101}}
+                      {:select-also [:transaction/description
+                                     :transaction/memo]
+                       :relationships #{[:transactions :transaction_items]}}))
+      "Multiple additional select columns can be specified"))
+
 ; WITH raccounts AS (
 ;     SELECT accounts.*
 ;     FROM accounts
