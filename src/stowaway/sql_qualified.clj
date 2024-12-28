@@ -172,10 +172,14 @@
   [k]
   (= "id" (name k)))
 
+(defn- model-ref?
+  [x]
+  (and (map? x)
+       (contains? x :id)))
+
 (defn- normalize-model-ref
   [[_ v :as e]]
-  (if (and (map? v)
-           (:id v))
+  (if (model-ref? v)
     (-> e
         (update-in [0] #(keyword (namespace %) (str (name %) "_id")))
         (update-in [1] :id))
@@ -267,13 +271,22 @@
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
   (when (seq relationships)
-    (->> (g/shortest-paths table
-                           (extract-tables criteria opts)
-                           :relationships relationships)
-         (mapcat #(path-to-join % opts))
-         (reduce (fn [res [join-type join]]
-                   (update-in res [join-type] (fnil into []) join))
-                 {}))))
+    ; Putting the values in a map eliminates duplicates.
+    ; We may want to reverse the order and make the table
+    ; the outer key and the type of join the inner key,
+    ; as duplicates are still possible the way it's written if
+    ; the same table is listed with two different join types
+    (let [mapped (->> (g/shortest-paths table
+                                        (extract-tables criteria opts)
+                                        :relationships relationships)
+                      (mapcat #(path-to-join % opts))
+                      (reduce (fn [mapped [join-type [table exp]]]
+                                (update-in mapped
+                                           [join-type]
+                                           (fnil assoc {}) table exp))
+                              {}))]
+      (update-vals mapped (fn [join-map]
+                            (mapcat identity (seq join-map)))))))
 
 (defn- join
   "Append left join, right join, full outer join, and inner
