@@ -322,3 +322,30 @@
            (sql/->update {:order/discount 0.1M}
                          {:user/first-name [:in ["Jane" "John"]]}
                          :relationships #{[:users :orders]})))))
+
+(deftest avoid-duplicate-table-references
+  (is (= ["SELECT transaction_items.* FROM transaction_items INNER JOIN accounts ON accounts.id = transaction_items.account_id INNER JOIN entities ON entities.id = accounts.entity_id INNER JOIN reconciliations ON accounts.id = reconciliations.account_id WHERE (((transaction_items.transaction_date >= ?) AND (transaction_items.transaction_date < ?) AND (transaction_items.account_id = ?)) AND ((transaction_items.reconciliation_id IS NULL) OR (reconciliations.status = ?))) AND (entities.user_id = ?) ORDER BY transaction_items.index DESC LIMIT ?"
+          "2017-01-01"
+          "2017-01-31"
+          77248
+          "new"
+          21484
+          5]
+         (sql/->query
+           [:and
+            [:and
+             #:transaction-item{:transaction-date [:between> "2017-01-01" "2017-01-31"],
+                                :account {:id 77248}}
+             [:or
+              #:transaction-item{:reconciliation {:id nil}}
+              #:reconciliation{:status "new"}]]
+            #:entity{:user {:id 21484}}]
+           {:limit 5
+            :target :transaction-item
+            :sort [[:transaction-item/index :desc]]
+            :relationships #{[:users :entities]
+                             [:entities :accounts]
+                             [:entities :transactions]
+                             [:accounts :transaction_items]
+                             [:accounts :reconciliations]
+                             [:transactions :transaction_items]}}))))
