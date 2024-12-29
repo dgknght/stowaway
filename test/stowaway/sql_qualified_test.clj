@@ -285,6 +285,11 @@
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select :transaction-item/quantity}))
       "The entire select clause can be specified")
+  (is (= ["SELECT id FROM transaction_items WHERE transaction_items.reconciliation_id = ?"
+          101]
+         (sql/->query {:transaction-item/reconciliation {:id 101}}
+                      {:select :id}))
+      "The select clause can include keywords without namespaces")
   (is (= ["SELECT transaction_items.quantity, transaction_items.value FROM transaction_items WHERE transaction_items.reconciliation_id = ?"
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
