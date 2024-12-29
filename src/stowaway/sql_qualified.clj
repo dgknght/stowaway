@@ -77,15 +77,24 @@
 
 (defn- pluralize-namespace
   [k]
-  (keyword (plural (namespace k))
-           (name k)))
+  (if-let [n (namespace k)]
+    (keyword (plural n)
+           (name k))
+    k))
 
-(defn apply-select
-  [sql {:keys [select-also]}]
-  (cond-> sql
-    select-also
-    (update-in [:select] concat (map pluralize-namespace
-                                     (->seq select-also)))))
+(defn build-select
+  "Construct the select clause.
+
+  By default, this is <table>.*.
+
+  You can specified :select, which will replace the default, or
+  :select-also, which will supplement the default."
+  [table {:keys [select-also select]}]
+  (if select
+    (map pluralize-namespace
+         (->seq select))
+    (cons (key-join table ".*")
+          (map pluralize-namespace (->seq select-also)))))
 
 (defn- subquery?
   [expr]
@@ -317,10 +326,7 @@
 
 (defn- simple-query
   [criteria table {:as opts :keys [select]}]
-  (-> {:select (if select
-                 (map pluralize-namespace
-                      (->seq select))
-                 [(key-join table ".*")])}
+  (-> {:select (build-select table opts)}
       (h/from table)
       (h/where (->where criteria opts))
       (join (->joins criteria
@@ -331,7 +337,6 @@
                                       (->> models
                                            (map #(model->table-key % opts))
                                            (into #{})))))))
-      (apply-select opts)
       (apply-sort opts)
       (apply-limit opts)
       (apply-offset opts)
@@ -344,7 +349,7 @@
   [criteria table {[k1 k2] :recursion :as opts}]
   (-> (h/with-recursive
         [:cte (h/union (simple-query criteria table opts)
-                       (-> (h/select (key-join table ".*"))
+                       (-> {:select (build-select table opts)}
                            (h/from table)
                            (h/join :cte [:= (key-join table "." k1) (key-join :cte "." k2)])))])
       (h/select :cte.*)
