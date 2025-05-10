@@ -83,9 +83,13 @@
 ; Common criteria 5: model reference
 ; {:order/user {:id 101}}
 (deftest query-against-criteria-with-a-model-reference
-  (is (= ["SELECT orders.* FROM orders WHERE orders.user_id = ?"
-          101]
-         (sql/->query {:order/user {:id 101}}))))
+  (testing "a scalar id value"
+    (is (= ["SELECT orders.* FROM orders WHERE orders.user_id = ?"
+            101]
+           (sql/->query {:order/user {:id 101}}))))
+  (testing "an :in clause"
+    (is (= ["SELECT orders.* FROM orders WHERE orders.user_id IN (?, ?)", 1, 2]
+         (sql/->query {:order/user [:in [{:id 1} {:id 2}]]})))))
 
 ; Common criteria 6: subquery against attributes
 ; {:user/identities [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}

@@ -193,15 +193,24 @@
 
 (defn- model-ref?
   [x]
-  (and (map? x)
-       (contains? x :id)))
+  (if (sequential? x)
+    (some model-ref? x)
+    (and (map? x)
+       (contains? x :id))))
+
+(defn- deref-model
+  [x]
+  (cond
+    (sequential? x) (mapv deref-model x)
+    (keyword? x) x
+    :else (:id x)))
 
 (defn- normalize-model-ref
   [[_ v :as e]]
   (if (model-ref? v)
     (-> e
         (update-in [0] #(keyword (namespace %) (str (name %) "_id")))
-        (update-in [1] :id))
+        (update-in [1] deref-model))
     e))
 
 (defn- coerce-id-value
@@ -325,7 +334,7 @@
     (seq inner) (assoc :join inner)))
 
 (defn- simple-query
-  [criteria table {:as opts :keys [select]}]
+  [criteria table opts]
   (-> {:select (build-select table opts)}
       (h/from table)
       (h/where (->where criteria opts))
