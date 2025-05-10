@@ -325,7 +325,7 @@
     (seq inner) (assoc :join inner)))
 
 (defn- simple-query
-  [criteria table {:as opts :keys [select]}]
+  [criteria table opts]
   (-> {:select (build-select table opts)}
       (h/from table)
       (h/where (->where criteria opts))
