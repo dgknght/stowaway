@@ -377,7 +377,7 @@
 
   If a keyword has a namespace, it is assumed to be a column reference. A keyword
   without a namespace is assumed to be a value that must be converted to a string."
-  [criteria & [{:keys [target named-params skip-format?] :as opts}]]
+  [criteria & [{:keys [target named-params skip-format? quoted?] :as opts}]]
   {:pre [(s/valid? ::c/criteria criteria)]}
   (let [target (or target
                    (keyword (single-ns criteria))
@@ -385,7 +385,8 @@
         table (model->table target opts)
         fmt (if skip-format?
               identity
-              #(hsql/format % {:params named-params}))]
+              #(hsql/format % {:params named-params
+                               :quoted quoted?}))]
     (fmt (if (:recursion opts)
            (recursive-query criteria table opts)
            (simple-query criteria table opts)))))
