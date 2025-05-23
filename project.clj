@@ -1,4 +1,4 @@
-(defproject stowaway "0.1.30"
+(defproject stowaway "0.2.0"
   :description "Library for abstracting data storage from business logic"
   :url "https://github.com/dgknght/stowaway"
   :license {:name "EPL-2.0 OR GPL-2.0-or-later WITH Classpath-exception-2.0"

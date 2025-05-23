@@ -31,10 +31,11 @@
                (str/join ","))))
 
 (defn- model->table
-  [m {:keys [table-names]
+  [m {:keys [table-names pluralize?]
       :or {table-names {}}}]
   {:pre [(keyword? m)]}
-  (get-in table-names [m] (-> m name plural ->snake_case keyword)))
+  (let [plurality (if pluralize? plural identity)]
+    (get-in table-names [m] (-> m name plurality ->snake_case keyword))))
 
 (defn- model->table-key
   [m opts]
@@ -89,12 +90,13 @@
 
   You can specified :select, which will replace the default, or
   :select-also, which will supplement the default."
-  [table {:keys [select-also select]}]
-  (if select
-    (map pluralize-namespace
-         (->seq select))
-    (cons (key-join table ".*")
-          (map pluralize-namespace (->seq select-also)))))
+  [table {:keys [select-also select pluralize?]}]
+  (let [plurality (if pluralize? pluralize-namespace identity)]
+    (if select
+      (map plurality
+           (->seq select))
+      (cons (key-join table ".*")
+            (map plurality (->seq select-also))))))
 
 (defn- subquery?
   [expr]
@@ -103,13 +105,13 @@
        (list? (second expr))))
 
 (defmulti ^:private map-entry->statements
-  (fn [[_k v]]
+  (fn [[_k v] _opts]
     (if (subquery? v)
       ::subquery
       (type v))))
 
 (defmethod map-entry->statements :default
-  [[k v]]
+  [[k v] _opts]
   [[:= k v]])
 
 (declare ->query)
@@ -127,11 +129,11 @@
 ; column reference. Otherwise, assume it's a value and should
 ; be converted to a string
 (defmethod map-entry->statements ::stow/keyword
-  [[k v]]
+  [[k v] _opts]
   [[:= k (naked-kw->string v) ]])
 
 (defmethod map-entry->statements ::stow/vector
-  [[k [oper & [v1 v2 :as values]]]]
+  [[k [oper & [v1 v2 :as values]]] {:keys [pluralize?] :as opts}]
   (case oper
 
     (:= :> :>= :<= :< :<> :!= :like)
@@ -160,7 +162,7 @@
     [(apply vector oper (->> values
                              (interleave (repeat k))
                              (partition 2)
-                             (mapcat map-entry->statements)))]
+                             (mapcat #(map-entry->statements % opts))))]
 
     :contained-by
     [[(keyword "@>") v1 k]]
@@ -173,14 +175,17 @@
 
     :including
     [[:in (keyword (namespace k) "id")
-      (assoc (->query v1 {:skip-format? true})
-             :select [(keyword (plural (single-ns v1))
-                               (str (singular (first (str/split (name k) #"\."))) "_id"))])]]
+      (let [[plurality singularity] (if pluralize?
+                                      [plural singular]
+                                      [identity identity])]
+        (assoc (->query v1 {:skip-format? true})
+               :select [(keyword (plurality (single-ns v1))
+                                 (str (singularity (first (str/split (name k) #"\."))) "_id"))]))]]
 
     [(apply vector :in k values)]))
 
 (defmethod map-entry->statements ::subquery
-  [[k [_ [criteria opts]]]]
+  [[k [_ [criteria opts]]] _opts]
   [[:in k (->query criteria (assoc opts :skip-format? true))]])
 
 (defmulti ^:private ->clauses
@@ -230,7 +235,7 @@
        (map (comp #(normalize-col-ref % opts)
                   #(coerce-id-value % opts)
                   normalize-model-ref))
-       (mapcat map-entry->statements)
+       (mapcat #(map-entry->statements % opts))
        seq))
 
 (declare ->where)
@@ -254,17 +259,18 @@
 
 (defn- ->join
   "Given an edge (two tables in any order), return the honeysql join clause."
-  [edge {:keys [joins aliases]
+  [edge {:keys [joins aliases pluralize?]
          :or {joins {}
               aliases {}}
          :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
-  (let [[t1 t2 :as rel] (find-relationship edge opts)]
+  (let [[t1 t2 :as rel] (find-relationship edge opts)
+        singularity (if pluralize? singular identity)]
     (or (joins rel)
         [:=
          (key-join (get-in aliases [t1] t1) ".id")
-         (key-join (get-in aliases [t2] t2) "." (-> t1 name singular) "_id")])))
+         (key-join (get-in aliases [t2] t2) "." (-> t1 name singularity) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -371,7 +377,7 @@
 
   If a keyword has a namespace, it is assumed to be a column reference. A keyword
   without a namespace is assumed to be a value that must be converted to a string."
-  [criteria & [{:keys [target named-params skip-format?] :as opts}]]
+  [criteria & [{:keys [target named-params skip-format? quoted?] :as opts}]]
   {:pre [(s/valid? ::c/criteria criteria)]}
   (let [target (or target
                    (keyword (single-ns criteria))
@@ -379,7 +385,8 @@
         table (model->table target opts)
         fmt (if skip-format?
               identity
-              #(hsql/format % {:params named-params}))]
+              #(hsql/format % {:params named-params
+                               :quoted quoted?}))]
     (fmt (if (:recursion opts)
            (recursive-query criteria table opts)
            (simple-query criteria table opts)))))
