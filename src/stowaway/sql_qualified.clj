@@ -4,7 +4,6 @@
             [clojure.spec.alpha :as s]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
-            [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.util :refer [key-join]]
             [stowaway.graph :as g]
             [stowaway.core :as stow]
@@ -39,18 +38,25 @@
   [m opts]
   (keyword (model->table m opts)))
 
+(def ^:private split-kw (juxt namespace name))
+
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
   in the form of table_name.column_name"
-  [k {:keys [target] :as opts}]
-  (let [field (name k)
-        model (or (namespace k)
-                  target)
-        table-name (model->table (keyword model) opts)]
-    (keyword (->> [(name table-name) field]
-                  (filter identity)
-                  (map ->snake_case)
-                  (str/join ".")))))
+  ([opts]
+   #(->col-ref % opts))
+  ([k {:keys [table
+              table-names
+              table-fn
+              column-fn]
+       :or {table-fn identity
+            column-fn identity
+            table-names {}}}]
+   (let [[ns n] (split-kw k)]
+     (keyword (if ns
+                (name (table-names (keyword ns) (table-fn ns)))
+                table)
+              (column-fn n)))))
 
 (defn- normalize-sort-spec
   [sort-spec]
@@ -62,7 +68,7 @@
   [sql {:keys [sort] :as opts}]
   (if sort
     (apply h/order-by sql (map (comp (fn [s]
-                                       (update-in s [0] #(->col-ref % opts)))
+                                       (update-in s [0] (->col-ref opts)))
                                      normalize-sort-spec)
                                sort))
     sql))
@@ -74,14 +80,15 @@
       x
       [x])))
 
-(defn- update-ns
-  ([f]
-   #(update-ns % f))
-  ([k f]
-   (if f
-     (keyword (f (namespace k))
-              (name k))
-     k)))
+(defn- update-keyword
+  ([ns-f name-f]
+   #(update-keyword % ns-f name-f))
+  ([k ns-f name-f]
+   (let [[ns n] ((juxt namespace name) k)]
+     (if ns
+       (keyword (ns-f ns)
+                (name-f n))
+       (name-f k)))))
 
 (defn build-select
   "Construct the select clause.
@@ -90,12 +97,18 @@
 
   You can specified :select, which will replace the default, or
   :select-also, which will supplement the default."
-  [{:keys [select-also select table-fn table] :or {table-fn identity}}]
+  [{:keys [select-also
+           select
+           table-fn
+           column-fn
+           table]
+    :or {table-fn identity
+         column-fn identity}}]
   (if select
-    (map (update-ns table-fn)
+    (map (update-keyword table-fn column-fn)
          (->seq select))
     (cons (keyword (name table) "*")
-          (map (update-ns table-fn)
+          (map (update-keyword table-fn column-fn)
                (->seq select-also)))))
 
 (defn- subquery?
@@ -173,11 +186,11 @@
     :&&
     [[oper (postgres-array v1) k]]
 
-    :including ; The k looks like "user.identity" because of earlier processing. I think maybe we don't need to do that because honeysql will.
+    :including
     [[:in (keyword (namespace k) "id")
       (assoc (->query v1 {:skip-format? true})
              :select [(keyword (table-fn (single-ns v1))
-                               (str (first (str/split (name k) #"\.")) "_id"))])]]
+                               (str (namespace k) "_id"))])]]
 
     [(apply vector :in k values)]))
 
@@ -224,7 +237,7 @@
 
 (defn- normalize-col-ref
   [e opts]
-  (update-in e [0] #(->col-ref % opts)))
+  (update-in e [0] (->col-ref opts)))
 
 (defmethod ->clauses ::stow/map
   [criteria opts]
@@ -256,17 +269,22 @@
 
 (defn- ->join
   "Given an edge (two tables in any order), return the honeysql join clause."
-  [edge {:keys [joins aliases]
+  [edge {:keys [joins
+                aliases
+                table-names
+                table-fn]
          :or {joins {}
-              aliases {}}
+              aliases {}
+              table-names {}
+              table-fn identity}
          :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
   (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (key-join (get-in aliases [t1] t1) ".id")
-         (key-join (get-in aliases [t2] t2) "." (name t1) "_id")])))
+         (key-join (get-in aliases [t1] (table-names t1 (table-fn t1))) ".id")
+         (key-join (get-in aliases [t2] (table-names t2 (table-fn t2))) "." (name t1) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -304,7 +322,7 @@
 (defn ->joins
   "Given a criteria map, return a sequence of join clauses that
   includes all tables in the criteria, plus the target table."
-  [criteria {:keys [table relationships] :as opts}]
+  [criteria {:keys [target relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
   (when (seq relationships)
@@ -313,7 +331,7 @@
     ; the outer key and the type of join the inner key,
     ; as duplicates are still possible the way it's written if
     ; the same table is listed with two different join types
-    (let [mapped (->> (g/shortest-paths table
+    (let [mapped (->> (g/shortest-paths target
                                         (extract-tables criteria opts)
                                         :relationships relationships)
                       (mapcat #(path->join % opts))
@@ -407,6 +425,7 @@
         joins (->joins criteria
                        (-> opts
                            (assoc :table table
+                                  :target target
                                   :aliases {table :x})
                            (update-in [:full-results]
                                       (fn [models]

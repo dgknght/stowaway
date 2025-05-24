@@ -2,6 +2,7 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.string :as string]
             [clojure.pprint :refer [pprint]]
+            [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.geometry :as geo]
             [stowaway.inflection :refer [plural]]
             [stowaway.sql-qualified :as sql]))
@@ -11,11 +12,16 @@
 (deftest query-a-single-table-with-simple-single-field-equality
   (testing "singular table name"
     (is (= ["SELECT user.* FROM user WHERE user.last_name = ?" "Doe"]
-         (sql/->query #:user{:last-name "Doe"}))))
+           (sql/->query #:user{:last-name "Doe"}))))
   (testing "plural table name"
     (is (= ["SELECT users.* FROM users WHERE users.last_name = ?" "Doe"]
-         (sql/->query #:user{:last-name "Doe"}
-                      {:table-fn plural})))))
+           (sql/->query #:user{:last-name "Doe"}
+                        {:table-fn plural}))))
+  (testing "multi-word table name"
+    (is (= ["SELECT transaction_item.* FROM transaction_item WHERE transaction_item.account_id = ? ORDER BY transaction_item.transaction_date ASC, transaction_item.index ASC" 101]
+           (sql/->query #:transaction-item{:account-id 101}
+                        {:sort [:transaction-item/transaction-date
+                                :transaction-item/index]})))))
 
 (deftest query-a-single-table-by-name
   (is (= ["SELECT user.* FROM user"]
@@ -114,7 +120,7 @@
 ; Common criteria 6: subquery against attributes
 ; {:user/identity [:including {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
 (deftest query-against-subquery-criteria
-  (is (= ["SELECT user.* FROM user WHERE id IN (SELECT identity.user_id FROM identity WHERE (identity.oauth_provider = ?) AND (identity.oauth_id = ?))"
+  (is (= ["SELECT user.* FROM user WHERE user.id IN (SELECT identity.user_id FROM identity WHERE (identity.oauth_provider = ?) AND (identity.oauth_id = ?))"
           "google"
           "abc123"]
          (sql/->query {:user/identity [:including
