@@ -45,16 +45,30 @@
       "An ORDER BY clauses is added based on the specified :sort value"))
 
 (deftest select-a-count
-  (is (= ["SELECT COUNT(1) AS record_count FROM user"]
-         (sql/->query {}
-                      {:target :user
-                       :count true})))
-  (testing "sort clauses are ignored"
-    (is (= ["SELECT COUNT(1) AS record_count FROM user"]
-         (sql/->query {}
-                      {:target :user
-                       :sort [:user/last-name]
-                       :count true})))))
+  (testing "unquoted"
+    (is (= ["SELECT COUNT(*) AS record_count FROM user"]
+           (sql/->query {}
+                        {:target :user
+                         :count true})))
+    (testing "sort clauses are ignored"
+      (is (= ["SELECT COUNT(*) AS record_count FROM user"]
+             (sql/->query {}
+                          {:target :user
+                           :sort [:user/last-name]
+                           :count true})))))
+  (testing "quoted"
+    (is (= ["SELECT COUNT(*) AS \"record_count\" FROM \"user\""]
+           (sql/->query {}
+                        {:target :user
+                         :count true
+                         :quoted? true})))
+    (testing "sort clauses are ignored"
+      (is (= ["SELECT COUNT(*) AS \"record_count\" FROM \"user\""]
+             (sql/->query {}
+                          {:target :user
+                           :sort [:user/last-name]
+                           :count true
+                           :quoted? true}))))))
 
 ; Common criteria 2: model id
 ; {:user/id "101"}

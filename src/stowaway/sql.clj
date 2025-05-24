@@ -46,7 +46,7 @@
   (if count
     (-> sql
         (dissoc :select :order-by)
-        (h/select [:%count.1 :record_count]))
+        (h/select [:%count.* :record_count]))
     sql))
 
 (defn- ensure-not-keyword

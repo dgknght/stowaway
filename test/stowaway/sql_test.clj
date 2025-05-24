@@ -49,7 +49,7 @@
              hsql/format))))
 
 (deftest select-a-count
-  (is (= ["SELECT COUNT(1) AS record_count FROM users"]
+  (is (= ["SELECT COUNT(*) AS record_count FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (sql/select-count {:count true})
@@ -60,7 +60,7 @@
              (sql/select-count {})
              hsql/format)))
   (testing "any order by clause is removed"
-    (is (= ["SELECT COUNT(1) AS record_count FROM users"]
+    (is (= ["SELECT COUNT(*) AS record_count FROM users"]
          (-> (h/select :*)
              (h/from :users)
              (h/order-by [:last-name])
