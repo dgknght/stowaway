@@ -4,10 +4,7 @@
             [clojure.spec.alpha :as s]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
-            [camel-snake-kebab.core :refer [->snake_case]]
             [stowaway.util :refer [key-join]]
-            [stowaway.inflection :refer [plural
-                                         singular]]
             [stowaway.graph :as g]
             [stowaway.core :as stow]
             [stowaway.criteria :as c :refer [namespaces
@@ -31,28 +28,35 @@
                (str/join ","))))
 
 (defn- model->table
-  [m {:keys [table-names pluralize?]
-      :or {table-names {}}}]
+  [m {:keys [table-names table-fn]
+      :or {table-names {}
+           table-fn identity}}]
   {:pre [(keyword? m)]}
-  (let [plurality (if pluralize? plural identity)]
-    (get-in table-names [m] (-> m name plurality ->snake_case keyword))))
+  (get-in table-names [m] (table-fn m)))
 
 (defn- model->table-key
   [m opts]
   (keyword (model->table m opts)))
 
+(def ^:private split-kw (juxt namespace name))
+
 (defn- ->col-ref
   "Accepts a qualified keyword and returns a column reference
   in the form of table_name.column_name"
-  [k {:keys [target] :as opts}]
-  (let [field (name k)
-        model (or (namespace k)
-                  target)
-        table-name (model->table (keyword model) opts)]
-    (keyword (->> [(name table-name) field]
-                  (filter identity)
-                  (map ->snake_case)
-                  (str/join ".")))))
+  ([opts]
+   #(->col-ref % opts))
+  ([k {:keys [table
+              table-names
+              table-fn
+              column-fn]
+       :or {table-fn identity
+            column-fn identity
+            table-names {}}}]
+   (let [[ns n] (split-kw k)]
+     (keyword (if ns
+                (name (table-names (keyword ns) (table-fn ns)))
+                table)
+              (column-fn n)))))
 
 (defn- normalize-sort-spec
   [sort-spec]
@@ -64,7 +68,7 @@
   [sql {:keys [sort] :as opts}]
   (if sort
     (apply h/order-by sql (map (comp (fn [s]
-                                       (update-in s [0] #(->col-ref % opts)))
+                                       (update-in s [0] (->col-ref opts)))
                                      normalize-sort-spec)
                                sort))
     sql))
@@ -76,12 +80,15 @@
       x
       [x])))
 
-(defn- pluralize-namespace
-  [k]
-  (if-let [n (namespace k)]
-    (keyword (plural n)
-           (name k))
-    k))
+(defn- update-keyword
+  ([ns-f name-f]
+   #(update-keyword % ns-f name-f))
+  ([k ns-f name-f]
+   (let [[ns n] ((juxt namespace name) k)]
+     (if ns
+       (keyword (ns-f ns)
+                (name-f n))
+       (name-f k)))))
 
 (defn build-select
   "Construct the select clause.
@@ -90,13 +97,19 @@
 
   You can specified :select, which will replace the default, or
   :select-also, which will supplement the default."
-  [table {:keys [select-also select pluralize?]}]
-  (let [plurality (if pluralize? pluralize-namespace identity)]
-    (if select
-      (map plurality
-           (->seq select))
-      (cons (key-join table ".*")
-            (map plurality (->seq select-also))))))
+  [{:keys [select-also
+           select
+           table-fn
+           column-fn
+           table]
+    :or {table-fn identity
+         column-fn identity}}]
+  (if select
+    (map (update-keyword table-fn column-fn)
+         (->seq select))
+    (cons (keyword (name table) "*")
+          (map (update-keyword table-fn column-fn)
+               (->seq select-also)))))
 
 (defn- subquery?
   [expr]
@@ -133,7 +146,7 @@
   [[:= k (naked-kw->string v) ]])
 
 (defmethod map-entry->statements ::stow/vector
-  [[k [oper & [v1 v2 :as values]]] {:keys [pluralize?] :as opts}]
+  [[k [oper & [v1 v2 :as values]]] {:keys [table-fn] :or {table-fn identity} :as opts}]
   (case oper
 
     (:= :> :>= :<= :< :<> :!= :like)
@@ -175,12 +188,9 @@
 
     :including
     [[:in (keyword (namespace k) "id")
-      (let [[plurality singularity] (if pluralize?
-                                      [plural singular]
-                                      [identity identity])]
-        (assoc (->query v1 {:skip-format? true})
-               :select [(keyword (plurality (single-ns v1))
-                                 (str (singularity (first (str/split (name k) #"\."))) "_id"))]))]]
+      (assoc (->query v1 {:skip-format? true})
+             :select [(keyword (table-fn (single-ns v1))
+                               (str (namespace k) "_id"))])]]
 
     [(apply vector :in k values)]))
 
@@ -227,7 +237,7 @@
 
 (defn- normalize-col-ref
   [e opts]
-  (update-in e [0] #(->col-ref % opts)))
+  (update-in e [0] (->col-ref opts)))
 
 (defmethod ->clauses ::stow/map
   [criteria opts]
@@ -259,18 +269,22 @@
 
 (defn- ->join
   "Given an edge (two tables in any order), return the honeysql join clause."
-  [edge {:keys [joins aliases pluralize?]
+  [edge {:keys [joins
+                aliases
+                table-names
+                table-fn]
          :or {joins {}
-              aliases {}}
+              aliases {}
+              table-names {}
+              table-fn identity}
          :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
-  (let [[t1 t2 :as rel] (find-relationship edge opts)
-        singularity (if pluralize? singular identity)]
+  (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (key-join (get-in aliases [t1] t1) ".id")
-         (key-join (get-in aliases [t2] t2) "." (-> t1 name singularity) "_id")])))
+         (key-join (get-in aliases [t1] (table-names t1 (table-fn t1))) ".id")
+         (key-join (get-in aliases [t2] (table-names t2 (table-fn t2))) "." (name t1) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -282,7 +296,7 @@
       :right
       :inner)))
 
-(defn- path-to-join
+(defn- path->join
   "Given a sequence of table names, return the join clauses necessary
   to include all the tables in the query."
   [path opts]
@@ -308,7 +322,7 @@
 (defn ->joins
   "Given a criteria map, return a sequence of join clauses that
   includes all tables in the criteria, plus the target table."
-  [criteria {:keys [table relationships] :as opts}]
+  [criteria {:keys [target relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
   (when (seq relationships)
@@ -317,10 +331,10 @@
     ; the outer key and the type of join the inner key,
     ; as duplicates are still possible the way it's written if
     ; the same table is listed with two different join types
-    (let [mapped (->> (g/shortest-paths table
+    (let [mapped (->> (g/shortest-paths target
                                         (extract-tables criteria opts)
                                         :relationships relationships)
-                      (mapcat #(path-to-join % opts))
+                      (mapcat #(path->join % opts))
                       (reduce (fn [mapped [join-type [table exp]]]
                                 (update-in mapped
                                            [join-type]
@@ -340,8 +354,8 @@
     (seq inner) (assoc :join inner)))
 
 (defn- simple-query
-  [criteria table opts]
-  (-> {:select (build-select table opts)}
+  [criteria {:keys [table] :as opts}]
+  (-> {:select (build-select opts)}
       (h/from table)
       (h/where (->where criteria opts))
       (join (->joins criteria
@@ -361,10 +375,10 @@
 ; I can't think of a good name for the recrusion keys,
 ; so I'm just addressing them by position for now.
 (defn- recursive-query
-  [criteria table {[k1 k2] :recursion :as opts}]
+  [criteria {[k1 k2] :recursion :as opts :keys [table]}]
   (-> (h/with-recursive
-        [:cte (h/union (simple-query criteria table opts)
-                       (-> {:select (build-select table opts)}
+        [:cte (h/union (simple-query criteria opts)
+                       (-> {:select (build-select opts)}
                            (h/from table)
                            (h/join :cte [:= (key-join table "." k1) (key-join :cte "." k2)])))])
       (h/select :cte.*)
@@ -386,10 +400,13 @@
         fmt (if skip-format?
               identity
               #(hsql/format % {:params named-params
-                               :quoted quoted?}))]
-    (fmt (if (:recursion opts)
-           (recursive-query criteria table opts)
-           (simple-query criteria table opts)))))
+                               :quoted quoted?}))
+        ->query (if (:recursion opts)
+                  recursive-query
+                  simple-query)]
+    (fmt (->query criteria (assoc opts
+                                  :target target
+                                  :table table)))))
 
 (defn- join-update
   [sql table alias joins]
@@ -408,6 +425,7 @@
         joins (->joins criteria
                        (-> opts
                            (assoc :table table
+                                  :target target
                                   :aliases {table :x})
                            (update-in [:full-results]
                                       (fn [models]
