@@ -13,6 +13,9 @@
   (testing "singular table name"
     (is (= ["SELECT user.* FROM user WHERE user.last_name = ?" "Doe"]
            (sql/->query #:user{:last-name "Doe"}))))
+  (testing "naked id"
+    (is (= ["SELECT user.* FROM user WHERE user.id = ?" 101]
+           (sql/->query {:id 101} {:target :user}))))
   (testing "plural table name"
     (is (= ["SELECT users.* FROM users WHERE users.last_name = ?" "Doe"]
            (sql/->query #:user{:last-name "Doe"}

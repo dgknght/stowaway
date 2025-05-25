@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
+            [clojure.set :refer [difference]]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
             [stowaway.util :refer [key-join]]
@@ -27,17 +28,6 @@
                (map delimit)
                (str/join ","))))
 
-(defn- model->table
-  [m {:keys [table-names table-fn]
-      :or {table-names {}
-           table-fn identity}}]
-  {:pre [(keyword? m)]}
-  (get-in table-names [m] (table-fn m)))
-
-(defn- model->table-key
-  [m opts]
-  (keyword (model->table m opts)))
-
 (def ^:private split-kw (juxt namespace name))
 
 (defn- ->col-ref
@@ -46,16 +36,12 @@
   ([opts]
    #(->col-ref % opts))
   ([k {:keys [table
-              table-names
-              table-fn
-              column-fn]
-       :or {table-fn identity
-            column-fn identity
-            table-names {}}}]
+              model->table
+              column-fn]}]
    (let [[ns n] (split-kw k)]
      (keyword (if ns
-                (name (table-names (keyword ns) (table-fn ns)))
-                table)
+                (model->table ns)
+                (name table))
               (column-fn n)))))
 
 (defn- normalize-sort-spec
@@ -101,9 +87,7 @@
            select
            table-fn
            column-fn
-           table]
-    :or {table-fn identity
-         column-fn identity}}]
+           table]}]
   (if select
     (map (update-keyword table-fn column-fn)
          (->seq select))
@@ -271,20 +255,17 @@
   "Given an edge (two tables in any order), return the honeysql join clause."
   [edge {:keys [joins
                 aliases
-                table-names
-                table-fn]
+                model->table]
          :or {joins {}
-              aliases {}
-              table-names {}
-              table-fn identity}
+              aliases {}}
          :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
   (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (key-join (get-in aliases [t1] (table-names t1 (table-fn t1))) ".id")
-         (key-join (get-in aliases [t2] (table-names t2 (table-fn t2))) "." (name t1) "_id")])))
+         (key-join (model->table (aliases t1 t1)) ".id")
+         (key-join (model->table (aliases t2 t2)) "." (name t1) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -299,25 +280,26 @@
 (defn- path->join
   "Given a sequence of table names, return the join clauses necessary
   to include all the tables in the query."
-  [path opts]
+  [path {:as opts :keys [model->table]}]
   (->> path
        (partition 2 1)
        (map (fn [[t1 t2 :as rel]]
               [(join-type t1 t2 opts)
-               [t2 (->join rel opts)]]))))
+               [(model->table t2) (->join rel opts)]]))))
 
 (defn- option-namespaces
   [{:keys [select-also]}]
   (when select-also
     (map namespace (->seq select-also))))
 
-(defn- extract-tables
-  [criteria opts]
-  (->> (namespaces criteria)
-       (concat (option-namespaces opts))
-       set
-       (map (comp #(model->table-key % opts)
-                  keyword))))
+(defn- extract-targets
+  [criteria {:as opts :keys [target]}]
+  (let [unique-spaces (->> (namespaces criteria)
+                           (concat (option-namespaces opts))
+                           set)]
+    (map keyword
+         (difference unique-spaces
+                     #{(name target)}))))
 
 (defn ->joins
   "Given a criteria map, return a sequence of join clauses that
@@ -325,23 +307,28 @@
   [criteria {:keys [target relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
-  (when (seq relationships)
-    ; Putting the values in a map eliminates duplicates.
-    ; We may want to reverse the order and make the table
-    ; the outer key and the type of join the inner key,
-    ; as duplicates are still possible the way it's written if
-    ; the same table is listed with two different join types
-    (let [mapped (->> (g/shortest-paths target
-                                        (extract-tables criteria opts)
-                                        :relationships relationships)
-                      (mapcat #(path->join % opts))
-                      (reduce (fn [mapped [join-type [table exp]]]
-                                (update-in mapped
-                                           [join-type]
-                                           (fnil assoc {}) table exp))
-                              {}))]
-      (update-vals mapped (fn [join-map]
-                            (mapcat identity (seq join-map)))))))
+  (let [targets (extract-targets criteria opts)]
+    (when (seq targets)
+      (when-not (seq relationships)
+        (throw (ex-info "Multiple tables were specified, but no relationships were specified."
+                        {:criteria criteria
+                         :tables targets})))
+      ; Putting the values in a map eliminates duplicates.
+      ; We may want to reverse the order and make the table
+      ; the outer key and the type of join the inner key,
+      ; as duplicates are still possible the way it's written if
+      ; the same table is listed with two different join types
+      (let [mapped (->> (g/shortest-paths target
+                                          targets
+                                          :relationships relationships)
+                        (mapcat #(path->join % opts))
+                        (reduce (fn [mapped [join-type [table exp]]]
+                                  (update-in mapped
+                                             [join-type]
+                                             (fnil assoc {}) table exp))
+                                {}))]
+        (update-vals mapped (fn [join-map]
+                              (mapcat identity (seq join-map))))))))
 
 (defn- join
   "Append left join, right join, full outer join, and inner
@@ -354,7 +341,7 @@
     (seq inner) (assoc :join inner)))
 
 (defn- simple-query
-  [criteria {:keys [table] :as opts}]
+  [criteria {:keys [table model->table] :as opts}]
   (-> {:select (build-select opts)}
       (h/from table)
       (h/where (->where criteria opts))
@@ -364,7 +351,7 @@
                          (update-in [:full-results]
                                     (fn [models]
                                       (->> models
-                                           (map #(model->table-key % opts))
+                                           (map model->table)
                                            (into #{})))))))
       (apply-sort opts)
       (apply-limit opts)
@@ -384,6 +371,48 @@
       (h/select :cte.*)
       (h/from :cte)))
 
+(defn- model->table*
+  [{:keys [table-fn table-names]
+    :or {table-names {}}}]
+  (fn [model]
+    {:pre [(or (keyword? model) (string? model))]}
+    (let [k (if (string? model)
+              (keyword model)
+              model)
+          result (table-names k (table-fn model))]
+      (if (string? model)
+        (name result)
+        result))))
+
+(defn- +model->table
+  [opts]
+  (assoc opts :model->table (model->table* opts)))
+
+(defn- ensure-fns
+  [opts]
+  (-> opts
+      (update-in [:column-fn] (fnil identity identity))
+      (update-in [:table-fn] (fnil identity identity))))
+
+(defn- +table
+  [{:as opts :keys [target model->table]}]
+  (assoc opts :table (model->table target)))
+
+(defn- ensure-target
+  [{:as opts :keys [target]} infered-ns]
+  (let [target (or target
+                   (keyword infered-ns)
+                   (throw (IllegalArgumentException. "Unable to determine the query target")))]
+    (assoc opts :target target)))
+
+(defn- refine-opts
+  [opts infered-ns]
+  (-> opts
+      (ensure-target infered-ns)
+      ensure-fns
+      +model->table
+      +table))
+
 (defn ->query
   "Translate a criteria map into a SQL query
 
@@ -391,12 +420,10 @@
 
   If a keyword has a namespace, it is assumed to be a column reference. A keyword
   without a namespace is assumed to be a value that must be converted to a string."
-  [criteria & [{:keys [target named-params skip-format? quoted?] :as opts}]]
+  [criteria & [{:keys [named-params skip-format? quoted?] :as options}]]
   {:pre [(s/valid? ::c/criteria criteria)]}
-  (let [target (or target
-                   (keyword (single-ns criteria))
-                   (throw (IllegalArgumentException. "Unable to determine the query target")))
-        table (model->table target opts)
+  (let [opts (refine-opts options
+                          (-> criteria single-ns keyword))
         fmt (if skip-format?
               identity
               #(hsql/format % {:params named-params
@@ -404,9 +431,7 @@
         ->query (if (:recursion opts)
                   recursive-query
                   simple-query)]
-    (fmt (->query criteria (assoc opts
-                                  :target target
-                                  :table table)))))
+    (fmt (->query criteria opts))))
 
 (defn- join-update
   [sql table alias joins]
@@ -417,20 +442,17 @@
     sql))
 
 (defn ->update
-  [changes criteria & {:as opts :keys [target]}]
-  (let [target (or target
-                   (keyword (single-ns changes))
-                   (throw (IllegalArgumentException. "Unable to determine the update target")))
-        table (model->table target opts)
+  [changes criteria & options]
+  (let [{:keys [table target model->table]
+         :as opts} (refine-opts options
+                                (-> changes single-ns keyword))
         joins (->joins criteria
                        (-> opts
-                           (assoc :table table
-                                  :target target
-                                  :aliases {table :x})
+                           (assoc :aliases {target :x})
                            (update-in [:full-results]
                                       (fn [models]
                                         (->> models
-                                             (map #(model->table-key % opts))
+                                             (map model->table)
                                              (into #{}))))))]
     (hsql/format
       (cond-> {:update table
