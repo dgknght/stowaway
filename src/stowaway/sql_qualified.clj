@@ -27,17 +27,6 @@
                (map delimit)
                (str/join ","))))
 
-(defn- model->table
-  [m {:keys [table-names table-fn]
-      :or {table-names {}
-           table-fn identity}}]
-  {:pre [(keyword? m)]}
-  (get-in table-names [m] (table-fn m)))
-
-(defn- model->table-key
-  [m opts]
-  (keyword (model->table m opts)))
-
 (def ^:private split-kw (juxt namespace name))
 
 (defn- ->col-ref
@@ -46,16 +35,13 @@
   ([opts]
    #(->col-ref % opts))
   ([k {:keys [table
-              table-names
-              table-fn
+              model->table
               column-fn]
-       :or {table-fn identity
-            column-fn identity
-            table-names {}}}]
+       :or {column-fn identity}}]
    (let [[ns n] (split-kw k)]
      (keyword (if ns
-                (name (table-names (keyword ns) (table-fn ns)))
-                table)
+                (model->table ns)
+                (name table))
               (column-fn n)))))
 
 (defn- normalize-sort-spec
@@ -271,20 +257,17 @@
   "Given an edge (two tables in any order), return the honeysql join clause."
   [edge {:keys [joins
                 aliases
-                table-names
-                table-fn]
+                model->table]
          :or {joins {}
-              aliases {}
-              table-names {}
-              table-fn identity}
+              aliases {}}
          :as opts}]
   {:pre [(or (nil? joins)
              (s/valid? ::joins joins))]}
   (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (key-join (get-in aliases [t1] (table-names t1 (table-fn t1))) ".id")
-         (key-join (get-in aliases [t2] (table-names t2 (table-fn t2))) "." (name t1) "_id")])))
+         (key-join (get-in aliases [t1] (model->table t1)) ".id")
+         (key-join (get-in aliases [t2] (model->table t2)) "." (name t1) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -312,11 +295,11 @@
     (map namespace (->seq select-also))))
 
 (defn- extract-tables
-  [criteria opts]
+  [criteria {:as opts :keys [model->table]}]
   (->> (namespaces criteria)
        (concat (option-namespaces opts))
        set
-       (map (comp #(model->table-key % opts)
+       (map (comp model->table
                   keyword))))
 
 (defn ->joins
@@ -354,7 +337,7 @@
     (seq inner) (assoc :join inner)))
 
 (defn- simple-query
-  [criteria {:keys [table] :as opts}]
+  [criteria {:keys [table model->table] :as opts}]
   (-> {:select (build-select opts)}
       (h/from table)
       (h/where (->where criteria opts))
@@ -364,7 +347,7 @@
                          (update-in [:full-results]
                                     (fn [models]
                                       (->> models
-                                           (map #(model->table-key % opts))
+                                           (map model->table)
                                            (into #{})))))))
       (apply-sort opts)
       (apply-limit opts)
@@ -384,6 +367,39 @@
       (h/select :cte.*)
       (h/from :cte)))
 
+(defn- model->table*
+  [{:keys [table-fn table-names]
+    :or {table-fn identity
+         table-names {}}}]
+  (fn [model]
+    #_{:pre [(or (keyword? model) (string? model))]}
+
+    (when-not (or (keyword? model) (string? model))
+      (pprint {::invalid-model model})
+      (throw (IllegalArgumentException. "Invalid model name")))
+
+    (let [k (if (string? model)
+              (keyword model)
+              model)
+          result (table-names k (table-fn model))]
+      (if (string? model)
+        (name result)
+        result))))
+
+(defn- refine-opts
+  [{:keys [target]
+    :as opts}
+   infered-ns]
+  (let [target (or target
+                   (keyword infered-ns)
+                   (throw (IllegalArgumentException. "Unable to determine the query target")))
+        model->table (model->table* opts)
+        table (model->table target)]
+    (assoc opts
+           :target target
+           :table table
+           :model->table model->table)))
+
 (defn ->query
   "Translate a criteria map into a SQL query
 
@@ -391,12 +407,10 @@
 
   If a keyword has a namespace, it is assumed to be a column reference. A keyword
   without a namespace is assumed to be a value that must be converted to a string."
-  [criteria & [{:keys [target named-params skip-format? quoted?] :as opts}]]
+  [criteria & [{:keys [named-params skip-format? quoted?] :as options}]]
   {:pre [(s/valid? ::c/criteria criteria)]}
-  (let [target (or target
-                   (keyword (single-ns criteria))
-                   (throw (IllegalArgumentException. "Unable to determine the query target")))
-        table (model->table target opts)
+  (let [opts (refine-opts options
+                          (-> criteria single-ns keyword))
         fmt (if skip-format?
               identity
               #(hsql/format % {:params named-params
@@ -404,9 +418,7 @@
         ->query (if (:recursion opts)
                   recursive-query
                   simple-query)]
-    (fmt (->query criteria (assoc opts
-                                  :target target
-                                  :table table)))))
+    (fmt (->query criteria opts))))
 
 (defn- join-update
   [sql table alias joins]
@@ -417,20 +429,17 @@
     sql))
 
 (defn ->update
-  [changes criteria & {:as opts :keys [target]}]
-  (let [target (or target
-                   (keyword (single-ns changes))
-                   (throw (IllegalArgumentException. "Unable to determine the update target")))
-        table (model->table target opts)
+  [changes criteria & options]
+  (let [{:keys [table model->table]
+         :as opts} (refine-opts options
+                                (-> changes single-ns keyword))
         joins (->joins criteria
                        (-> opts
-                           (assoc :table table
-                                  :target target
-                                  :aliases {table :x})
+                           (assoc :aliases {table :x})
                            (update-in [:full-results]
                                       (fn [models]
                                         (->> models
-                                             (map #(model->table-key % opts))
+                                             (map model->table)
                                              (into #{}))))))]
     (hsql/format
       (cond-> {:update table
