@@ -36,8 +36,7 @@
    #(->col-ref % opts))
   ([k {:keys [table
               model->table
-              column-fn]
-       :or {column-fn identity}}]
+              column-fn]}]
    (let [[ns n] (split-kw k)]
      (keyword (if ns
                 (model->table ns)
@@ -87,9 +86,7 @@
            select
            table-fn
            column-fn
-           table]
-    :or {table-fn identity
-         column-fn identity}}]
+           table]}]
   (if select
     (map (update-keyword table-fn column-fn)
          (->seq select))
@@ -369,15 +366,9 @@
 
 (defn- model->table*
   [{:keys [table-fn table-names]
-    :or {table-fn identity
-         table-names {}}}]
+    :or {table-names {}}}]
   (fn [model]
-    #_{:pre [(or (keyword? model) (string? model))]}
-
-    (when-not (or (keyword? model) (string? model))
-      (pprint {::invalid-model model})
-      (throw (IllegalArgumentException. "Invalid model name")))
-
+    {:pre [(or (keyword? model) (string? model))]}
     (let [k (if (string? model)
               (keyword model)
               model)
@@ -386,19 +377,34 @@
         (name result)
         result))))
 
-(defn- refine-opts
-  [{:keys [target]
-    :as opts}
-   infered-ns]
+(defn- +model->table
+  [opts]
+  (assoc opts :model->table (model->table* opts)))
+
+(defn- ensure-fns
+  [opts]
+  (-> opts
+      (update-in [:column-fn] (fnil identity identity))
+      (update-in [:table-fn] (fnil identity identity))))
+
+(defn- +table
+  [{:as opts :keys [target model->table]}]
+  (assoc opts :table (model->table target)))
+
+(defn- ensure-target
+  [{:as opts :keys [target]} infered-ns]
   (let [target (or target
                    (keyword infered-ns)
-                   (throw (IllegalArgumentException. "Unable to determine the query target")))
-        model->table (model->table* opts)
-        table (model->table target)]
-    (assoc opts
-           :target target
-           :table table
-           :model->table model->table)))
+                   (throw (IllegalArgumentException. "Unable to determine the query target")))]
+    (assoc opts :target target)))
+
+(defn- refine-opts
+  [opts infered-ns]
+  (-> opts
+      (ensure-target infered-ns)
+      ensure-fns
+      +model->table
+      +table))
 
 (defn ->query
   "Translate a criteria map into a SQL query
