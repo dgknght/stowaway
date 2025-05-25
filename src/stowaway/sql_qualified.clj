@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
+            [clojure.set :refer [difference]]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
             [stowaway.util :refer [key-join]]
@@ -263,8 +264,8 @@
   (let [[t1 t2 :as rel] (find-relationship edge opts)]
     (or (joins rel)
         [:=
-         (key-join (get-in aliases [t1] (model->table t1)) ".id")
-         (key-join (get-in aliases [t2] (model->table t2)) "." (name t1) "_id")])))
+         (key-join (model->table (aliases t1 t1)) ".id")
+         (key-join (model->table (aliases t2 t2)) "." (name t1) "_id")])))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]
@@ -279,25 +280,26 @@
 (defn- path->join
   "Given a sequence of table names, return the join clauses necessary
   to include all the tables in the query."
-  [path opts]
+  [path {:as opts :keys [model->table]}]
   (->> path
        (partition 2 1)
        (map (fn [[t1 t2 :as rel]]
               [(join-type t1 t2 opts)
-               [t2 (->join rel opts)]]))))
+               [(model->table t2) (->join rel opts)]]))))
 
 (defn- option-namespaces
   [{:keys [select-also]}]
   (when select-also
     (map namespace (->seq select-also))))
 
-(defn- extract-tables
-  [criteria {:as opts :keys [model->table]}]
-  (->> (namespaces criteria)
-       (concat (option-namespaces opts))
-       set
-       (map (comp model->table
-                  keyword))))
+(defn- extract-targets
+  [criteria {:as opts :keys [target]}]
+  (let [unique-spaces (->> (namespaces criteria)
+                           (concat (option-namespaces opts))
+                           set)]
+    (map keyword
+         (difference unique-spaces
+                     #{(name target)}))))
 
 (defn ->joins
   "Given a criteria map, return a sequence of join clauses that
@@ -305,23 +307,28 @@
   [criteria {:keys [target relationships] :as opts}]
   {:pre [(or (nil? relationships)
              (s/valid? ::relationships relationships))]}
-  (when (seq relationships)
-    ; Putting the values in a map eliminates duplicates.
-    ; We may want to reverse the order and make the table
-    ; the outer key and the type of join the inner key,
-    ; as duplicates are still possible the way it's written if
-    ; the same table is listed with two different join types
-    (let [mapped (->> (g/shortest-paths target
-                                        (extract-tables criteria opts)
-                                        :relationships relationships)
-                      (mapcat #(path->join % opts))
-                      (reduce (fn [mapped [join-type [table exp]]]
-                                (update-in mapped
-                                           [join-type]
-                                           (fnil assoc {}) table exp))
-                              {}))]
-      (update-vals mapped (fn [join-map]
-                            (mapcat identity (seq join-map)))))))
+  (let [targets (extract-targets criteria opts)]
+    (when (seq targets)
+      (when-not (seq relationships)
+        (throw (ex-info "Multiple tables were specified, but no relationships were specified."
+                        {:criteria criteria
+                         :tables targets})))
+      ; Putting the values in a map eliminates duplicates.
+      ; We may want to reverse the order and make the table
+      ; the outer key and the type of join the inner key,
+      ; as duplicates are still possible the way it's written if
+      ; the same table is listed with two different join types
+      (let [mapped (->> (g/shortest-paths target
+                                          targets
+                                          :relationships relationships)
+                        (mapcat #(path->join % opts))
+                        (reduce (fn [mapped [join-type [table exp]]]
+                                  (update-in mapped
+                                             [join-type]
+                                             (fnil assoc {}) table exp))
+                                {}))]
+        (update-vals mapped (fn [join-map]
+                              (mapcat identity (seq join-map))))))))
 
 (defn- join
   "Append left join, right join, full outer join, and inner
@@ -436,12 +443,12 @@
 
 (defn ->update
   [changes criteria & options]
-  (let [{:keys [table model->table]
+  (let [{:keys [table target model->table]
          :as opts} (refine-opts options
                                 (-> changes single-ns keyword))
         joins (->joins criteria
                        (-> opts
-                           (assoc :aliases {table :x})
+                           (assoc :aliases {target :x})
                            (update-in [:full-results]
                                       (fn [models]
                                         (->> models
