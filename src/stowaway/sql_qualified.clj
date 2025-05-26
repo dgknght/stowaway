@@ -13,8 +13,11 @@
             [stowaway.sql :as sql]))
 
 (s/def ::relationship (s/tuple keyword? keyword?))
-(s/def ::relationships (s/coll-of ::relationship :min-count 1))
-(s/def ::joins (s/map-of ::relationship vector?))
+(s/def ::relationships (s/coll-of ::relationship :min-count 1 :kind set?))
+(s/def ::column (s/or :same keyword?
+                      :different (s/tuple any? any?))) ; TODO: This should be any scalar value, I think
+(s/def ::columns (s/coll-of ::column))
+(s/def ::joins (s/map-of ::relationship ::columns))
 
 (def apply-limit sql/apply-limit)
 (def apply-offset sql/apply-offset)
@@ -260,12 +263,27 @@
               aliases {}}
          :as opts}]
   {:pre [(or (nil? joins)
-             (s/valid? ::joins joins))]}
-  (let [[t1 t2 :as rel] (find-relationship edge opts)]
-    (or (joins rel)
-        [:=
-         (key-join (model->table (aliases t1 t1)) ".id")
-         (key-join (model->table (aliases t2 t2)) "." (name t1) "_id")])))
+               (s/valid? ::joins joins))]}
+  (let [[t1 t2 :as rel] (find-relationship edge opts)
+        columns (or (joins rel)
+                    [[:id (keyword (str (name t1) "-id"))]])
+        clauses (map (fn [c]
+                       (let [[c1 c2] (if (coll? c)
+                                       c
+                                       [c c])]
+                         [:=
+                          (if (keyword? c1)
+                            (keyword (name (model->table (aliases t1 t1)))
+                                     (name c1))
+                            c1)
+                          (if (keyword? c2)
+                            (keyword (name (model->table (aliases t2 t2)))
+                                     (name c2))
+                            c2)]))
+                     columns)]
+    (if (= 1 (count clauses))
+      (first clauses)
+      (apply vector :and clauses))))
 
 (defn- join-type
   [t1 t2 {:keys [full-results]}]

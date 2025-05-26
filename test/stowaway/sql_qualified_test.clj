@@ -250,16 +250,15 @@
                         :user/size [:in #{2 3 4}]}]))))
 
 (deftest apply-criteria-with-explicit-join-expression
-  (is (= ["SELECT setting.* FROM setting INNER JOIN user ON (user.id = setting.owner_id) AND (setting.owner_type = ?) WHERE user.last_name = ?"
+  (is (= ["SELECT setting.* FROM setting INNER JOIN user ON (user.id = setting.owner_id) AND (? = setting.owner_type) WHERE user.last_name = ?"
           "user"
           "Doe"]
          (sql/->query {:user/last-name "Doe"}
                       {:target :setting
                        :relationships #{[:user :setting]}
                        :joins {[:user :setting]
-                               [:and
-                                [:= :user.id :setting.owner_id]
-                                [:= :setting.owner_type "user"]]}}))))
+                               [[:id :owner-id]
+                                ["user" :owner-type]]}}))))
 
 (deftest apply-criteria-to-array-field
   (is (= ["SELECT order.* FROM order WHERE ? && order.tags" "'{\"rush\",\"preferred\"}'"]
@@ -294,17 +293,16 @@
             ["SELECT transaction.*"
              "FROM transaction"
              "INNER JOIN attachment"
-             "ON (transaction.id = attachment.transaction_id)"
-             "AND (transaction.transaction_date = attachment.transaction_date)"
+             "ON (transaction.transaction_date = attachment.transaction_date)"
+             "AND (transaction.id = attachment.transaction_id)"
              "WHERE attachment.id = ?"])
           101]
          (sql/->query {:attachment/id 101}
                       {:target :transaction
                        :relationships #{[:transaction :attachment]}
                        :joins {[:transaction :attachment]
-                               [:and
-                                [:= :transaction.id :attachment.transaction_id]
-                                [:= :transaction.transaction_date :attachment.transaction_date]]}}))))
+                               [:transaction-date
+                                [:id :transaction-id]]}}))))
 
 (deftest query-against-a-point
   (is (= ["SELECT location.* FROM location WHERE ? @> location.center"
