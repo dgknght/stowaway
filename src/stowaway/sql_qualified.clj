@@ -258,9 +258,11 @@
   "Given an edge (two tables in any order), return the honeysql join clause."
   [edge {:keys [joins
                 aliases
-                model->table]
+                model->table
+                column-fn]
          :or {joins {}
-              aliases {}}
+              aliases {}
+              column-fn identity}
          :as opts}]
   {:pre [(or (nil? joins)
                (s/valid? ::joins joins))]}
@@ -274,11 +276,11 @@
                          [:=
                           (if (keyword? c1)
                             (keyword (name (model->table (aliases t1 t1)))
-                                     (name c1))
+                                     (name (column-fn c1)))
                             c1)
                           (if (keyword? c2)
                             (keyword (name (model->table (aliases t2 t2)))
-                                     (name c2))
+                                     (name (column-fn c2)))
                             c2)]))
                      columns)]
     (if (= 1 (count clauses))
