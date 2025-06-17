@@ -102,7 +102,7 @@
 
 (defn- path->join-clauses
   "Given a path that maps connections between namespaces, return a list
-  of where clauses the join the namespaces."
+  of where clauses that join the namespaces."
   [path source relationships]
   (->> path
        (partition 2 1)
