@@ -11,5 +11,10 @@
                  [ubergraph "0.9.0" :exclusions [org.clojure/spec.alpha
                                                  org.clojure/clojure
                                                  org.clojure/core.specs.alpha]]]
+  :plugins [[lein-cloverage "1.2.2"]]
+  :cloverage {:line-fail-threshold 90
+              :form-fail-threshold 80
+              :low-watermark 93
+              :high-watermark 97}
   :repl-options {:init-ns stowaway.core}
   :repositories [["clojars" {:creds :gpg}]])
