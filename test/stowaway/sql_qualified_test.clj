@@ -349,6 +349,7 @@
                        :relationships #{[:transaction :transaction-item]}}))
       "Multiple additional select columns can be specified"))
 
+; Common criteria 12: recursion
 ; WITH raccount AS (
 ;     SELECT account.*
 ;     FROM account
