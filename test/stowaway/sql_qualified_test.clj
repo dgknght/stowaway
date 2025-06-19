@@ -195,6 +195,14 @@
          (sql/->query #:transaction{:date [:<between> "2020-01-01" "2020-12-31"]}))
       ":<between> is exclusive of the lower bound and exclusive of the upper"))
 
+; Common criteria 11: nil match
+; #:user{:first-name "John" :last-name nil}
+(deftest apply-a-nil-criterion
+  (is (= ["SELECT user.* FROM user WHERE (user.last_name IS NULL) AND (user.first_name = ?)"
+          "John"]
+         (sql/->query #:user{:last-name nil
+                             :first-name "John"}))))
+
 (deftest query-against-a-union-of-values-for-a-single-field
   (is (= ["SELECT user.* FROM user WHERE (user.first_name = ?) OR (user.first_name = ?)"
           "Jane"

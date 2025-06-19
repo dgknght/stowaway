@@ -236,6 +236,18 @@
                              {:transaction/date [:<between> "2020-01-01" "2020-12-31"]}))
       ":<between> is exclusive on both ends"))
 
+; Common criteria 11: nil match
+; #:user{:first-name "John" :last-name nil}
+(deftest apply-a-nil-criterion
+  (is (= '{:find [?x]
+           :where [[?x :user/first-name ?a]
+                   [(missing? $ ?x :user/last-name)]]
+           :in [?a]
+           :args ["John"]}
+         (dtl/apply-criteria query
+                             #:user{:last-name nil
+                                    :first-name "John"}))))
+
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
            :where [[?x :xt/id ?a]]

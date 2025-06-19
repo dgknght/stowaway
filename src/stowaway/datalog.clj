@@ -221,10 +221,12 @@
 
 (defmulti ^:private extract-inputs* type-dispatch)
 
+; e.g. {:first-name "John"}
 (defmethod extract-inputs* ::stow/map
   [m {:keys [next-ident existing entity-ref]}]
   (->> m
        (mapcat criterion->inputs)
+       (filter second)
        (reduce (fn [res [k v]]
                  (update-in res [k v] #(if %
                                          %
@@ -233,6 +235,7 @@
                                            (next-ident)))))
                existing)))
 
+; e.g. [:or {:first-name "John"} {:last-name "Doe"}]
 (defmethod extract-inputs* ::stow/vector
   [[_ & cs] {:keys [existing] :as opts}]
   (reduce #(extract-inputs* %2 (assoc opts :existing %1))
@@ -279,7 +282,7 @@
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k :as criterion] {:keys [inputs remap] :as opts}]
+  [[k v :as criterion] {:keys [inputs remap] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
   ; :in clause as the entity reference directly for simple equality tests
   ; We don't want to do that, though, if the attribute has been remapped
@@ -287,11 +290,12 @@
   ; handling for :id
   (let [orig-k (if (= ::id k) :id k)
         attr (get-in remap [orig-k] orig-k)]
-    (if (= :id attr)
-      []
-      [[(criterion-e k opts)
-        attr
-        (get-in inputs criterion)]])))
+    (when (not= :id attr)
+      [(if v
+         [(criterion-e k opts)
+          attr
+          (get-in inputs criterion)]
+         [(list 'missing? '$ (criterion-e k opts) attr)])])))
 
 (defmethod criterion->where :explicit=
   [[k [_ v]] {:keys [inputs remap] :as opts}]
