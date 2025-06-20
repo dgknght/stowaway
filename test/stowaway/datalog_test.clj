@@ -254,8 +254,8 @@
            :where [(match-and-recurse ?x ?a ?b)]
            :in [% ?a ?b]
            :args ['[[(match-and-recurse ?x ?a ?b)
-                     [?a :account/name ?b]
-                     [?a :account/type ?c]]
+                     [?x :account/name ?a]
+                     [?x :account/type ?b]]
                     [(match-and-recurse ?a1 ?b ?c)
                      [?a1 :account/parent ?a2]
                      (match-and-recurse ?a2 ?b ?c)]]
