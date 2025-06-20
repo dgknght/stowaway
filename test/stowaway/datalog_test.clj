@@ -253,7 +253,7 @@
   (is (= '{:find [?x]
            :where [(match-and-recurse ?x ?a ?b)]
            :in [% ?a ?b]
-           :args ['[[(match-and-recurse ?a ?b ?c)
+           :args ['[[(match-and-recurse ?x ?a ?b)
                      [?a :account/name ?b]
                      [?a :account/type ?c]]
                     [(match-and-recurse ?a1 ?b ?c)

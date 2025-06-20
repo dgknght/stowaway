@@ -411,6 +411,24 @@
     (apply vector (rest (first where)))
     where))
 
+(defn- recursion-rule
+  [[rel-key upward?] where inputs]
+  [(apply vector (apply list 'match-and-recurse '?x inputs)
+          where)
+   [(apply list 'match-and-recurse '?x1 inputs)
+    (cond-> ['?x1 rel-key '?x2]
+      upward? reverse)
+    (apply list 'match-and-recurse '?x2 inputs)]])
+
+(defn- apply-recursion
+  [{:as query :keys [in where]} {:keys [recursion]}]
+  (if recursion
+    (-> query
+        (update-in [:in] #(cons '% %))
+        (update-in [:args] #(cons (recursion-rule recursion where in) %))
+        (assoc :where [(apply list 'match-and-recurse '?x in)]))
+    query))
+
 (defn apply-criteria
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
@@ -435,7 +453,8 @@
                                 where)))
         (append-joining-clauses normalized opts)
         (sort-where-clauses opts)
-        (update-in [:where] vec))))
+        (update-in [:where] vec)
+        (apply-recursion options))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
