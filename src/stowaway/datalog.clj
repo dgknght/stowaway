@@ -424,8 +424,10 @@
   [{:as query :keys [in where]} {:keys [recursion]}]
   (if recursion
     (-> query
-        (update-in [:in] #(cons '% %))
-        (update-in [:args] #(cons (recursion-rule recursion where in) %))
+        (update-in [:in] (fn [in] (cons '% in)))
+        (update-in [:args] (fn [args]
+                             (cons (recursion-rule recursion where in)
+                                   args)))
         (assoc :where [(apply list 'match-and-recurse '?x in)]))
     query))
 

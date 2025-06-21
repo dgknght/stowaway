@@ -253,18 +253,18 @@
   (is (= '{:find [?x]
            :where [(match-and-recurse ?x ?a ?b)]
            :in [% ?a ?b]
-           :args ['[[(match-and-recurse ?x ?a ?b)
-                     [?x :account/name ?a]
-                     [?x :account/type ?b]]
-                    [(match-and-recurse ?a1 ?b ?c)
-                     [?a1 :account/parent ?a2]
-                     (match-and-recurse ?a2 ?b ?c)]]
+           :args [[[(match-and-recurse ?x ?a ?b)
+                    [?x :account/name ?a]
+                    [?x :account/type ?b]]
+                   [(match-and-recurse ?x1 ?a ?b)
+                    [?x1 :account/parent ?x2]
+                    (match-and-recurse ?x2 ?a ?b)]]
                   "Checking"
                   :asset]}
          (dtl/apply-criteria query
                              {:account/name "Checking"
                               :account/type :asset}
-                             {:recursion [:account/parent :upward]}))))
+                             {:recursion [:account/parent]}))))
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
