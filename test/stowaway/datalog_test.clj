@@ -248,6 +248,27 @@
                              #:user{:last-name nil
                                     :first-name "John"}))))
 
+; Common criteria 12: recursion
+(deftest query-with-recursion
+  (is (= '{:find [?x]
+           :where [(match-and-recurse ?x ?a ?b)]
+           :in [$ % ?a ?b]
+           :args [::db ; this is a placeholder for the db in this test
+                  [[(match-and-recurse ?x ?a ?b)
+                    [?x :account/name ?a]
+                    [?x :account/type ?b]]
+                   [(match-and-recurse ?x1 ?a ?b)
+                    [?x1 :account/parent ?x2]
+                    (match-and-recurse ?x2 ?a ?b)]]
+                  "Checking"
+                  :asset]}
+         (dtl/apply-criteria (assoc query
+                                    :in ['$]
+                                    :args [::db])
+                             {:account/name "Checking"
+                              :account/type :asset}
+                             {:recursion [:account/parent]}))))
+
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
            :where [[?x :xt/id ?a]]

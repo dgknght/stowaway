@@ -102,7 +102,7 @@
 
 (defn- path->join-clauses
   "Given a path that maps connections between namespaces, return a list
-  of where clauses the join the namespaces."
+  of where clauses that join the namespaces."
   [path source relationships]
   (->> path
        (partition 2 1)
@@ -125,18 +125,6 @@
                                     :graph graph)]
         (mapcat #(path->join-clauses % source rels)
                 paths)))))
-
-(defn- append-joining-clauses
-  "Given a datalog query and a criteria (map or vector), when the criteria
-  spans multiple namespaces, return the query with addition where clauses necessary
-  to join the namespaces."
-  [query criteria opts]
-  (if-let [clauses (extract-joining-clauses criteria opts)]
-    (update-in query
-               [:where]
-               concat
-               clauses)
-    query))
 
 (defn- attr->sortable
   [shortest-path entities]
@@ -172,16 +160,14 @@
                 clauses))))
 
 (defn- sort-where-clauses
-  "Given a query with a where clause, sort the clauses with the aim of putting
+  "Given a sequence of where clause, sort the clauses with the aim of putting
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
-  [query {:keys [relationships graph-apex graph]}]
+  [{:keys [relationships graph-apex graph]} clauses]
   (let [entities (->> relationships seq flatten set)
         shortest #(shortest-path graph graph-apex %)]
-    (update-in query
-               [:where]
-               #(sort (compare-where-clauses shortest entities)
-                      %))))
+    (sort (compare-where-clauses shortest entities)
+          clauses)))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
@@ -411,8 +397,28 @@
     (apply vector (rest (first where)))
     where))
 
+(defn- recursion-rule
+  [[rel-key upward?] where inputs]
+  [(apply vector (apply list 'match-and-recurse '?x inputs)
+          where)
+   [(apply list 'match-and-recurse '?x1 inputs)
+    (cond-> ['?x1 rel-key '?x2]
+      upward? reverse)
+    (apply list 'match-and-recurse '?x2 inputs)]])
+
+(defn- apply-recursion
+  [{:as query :keys [in where]} {:keys [recursion]}]
+  (if recursion
+    (-> query
+        (update-in [:in] (fn [in] (cons '% in)))
+        (update-in [:args] (fn [args]
+                             (cons (recursion-rule recursion where in)
+                                   args)))
+        (assoc :where [(apply list 'match-and-recurse '?x in)]))
+    query))
+
 (defn apply-criteria
-  [query criteria & [options]]
+  [query criteria & [{:as options :keys [recursion]}]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
   (let [opts (merge default-apply-criteria-options
@@ -423,18 +429,24 @@
         normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
-        where (strip-redundant-and
-                (criteria->where normalized (assoc opts
-                                                 :inputs inputs-map)))]
+        where (->> (criteria->where normalized
+                                    (assoc opts
+                                           :inputs inputs-map))
+                   strip-redundant-and
+                   (concat (:where query)
+                           (extract-joining-clauses criteria opts))
+                   (sort-where-clauses opts))
+        recursion-rule (when recursion
+                         (recursion-rule recursion where inputs))]
     (-> query
-        (update-in [:in] (fnil concat []) inputs)
-        (update-in [:args]  (fnil concat []) args)
-        (update-in [:where] (fn [w]
-                              (if w
-                                (vec (concat w where))
-                                where)))
-        (append-joining-clauses normalized opts)
-        (sort-where-clauses opts)
+        (update-in [:in] (fnil concat []) (cond->> inputs
+                                            recursion (cons '%)))
+        (update-in [:args]  (fnil concat []) (cond->> args
+                                               recursion-rule
+                                               (cons recursion-rule)))
+        (assoc :where (if recursion
+                        [(apply list 'match-and-recurse '?x inputs)]
+                        where))
         (update-in [:where] vec))))
 
 (defn- ensure-attr
