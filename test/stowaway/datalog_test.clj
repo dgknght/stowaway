@@ -252,8 +252,9 @@
 (deftest query-with-recursion
   (is (= '{:find [?x]
            :where [(match-and-recurse ?x ?a ?b)]
-           :in [% ?a ?b]
-           :args [[[(match-and-recurse ?x ?a ?b)
+           :in [$ % ?a ?b]
+           :args [::db ; this is a placeholder for the db in this test
+                  [[(match-and-recurse ?x ?a ?b)
                     [?x :account/name ?a]
                     [?x :account/type ?b]]
                    [(match-and-recurse ?x1 ?a ?b)
@@ -261,7 +262,9 @@
                     (match-and-recurse ?x2 ?a ?b)]]
                   "Checking"
                   :asset]}
-         (dtl/apply-criteria query
+         (dtl/apply-criteria (assoc query
+                                    :in ['$]
+                                    :args [::db])
                              {:account/name "Checking"
                               :account/type :asset}
                              {:recursion [:account/parent]}))))
