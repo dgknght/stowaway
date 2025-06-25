@@ -41,6 +41,7 @@
                     :=                  :explicit=
                     (:< :<= :> :>= :!=) :binary-pred
                     :and                :intersection
+                    :in                 :inclusion
                     :including          :including
                     :including-match    :entity-match
                     (:between
@@ -286,6 +287,11 @@
 (defmethod criterion->where :explicit=
   [[k [_ v]] {:keys [inputs remap] :as opts}]
   [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
+
+(defmethod criterion->where :inclusion
+  [[k vs] opts]
+  (let [e-ref (criterion-e k opts)]
+    [(apply list 'or (map #(list '= e-ref %) vs))]))
 
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs remap] :as opts}]

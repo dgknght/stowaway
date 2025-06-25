@@ -269,6 +269,16 @@
                               :account/type :asset}
                              {:recursion [:account/parent]}))))
 
+; Common criteria 13: inclusion in a list
+(deftest query-against-inclusion-in-a-list
+  (is (= '{:find [?x]
+           :where (or [?x :account/type ?a]
+                      [?x :account/type ?b])
+           :in [?a ?b]
+           :args [[:asset :expense]]}
+         (dtl/apply-criteria query
+                             {:account/type [:in '(:asset :expense)]}))))
+
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
            :where [[?x :xt/id ?a]]
