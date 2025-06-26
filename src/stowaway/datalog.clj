@@ -175,8 +175,11 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in :!= := :including :between :<between :between> :<between>)
+          (:> :>= :< :<= :!= := :including :between :<between :between> :<between>)
           :pred
+
+          :in
+          :inclusion
 
           :including-match
           :match
@@ -195,6 +198,10 @@
   (mapv (fn [v]
          [k v])
        vs))
+
+(defmethod criterion->inputs :inclusion
+  [[_k [_ vs]]]
+  (set vs))
 
 (defmethod criterion->inputs :match
   [[_k [_ m]]]
@@ -289,9 +296,9 @@
   [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
 
 (defmethod criterion->where :inclusion
-  [[k vs] opts]
+  [[k _v] opts]
   (let [e-ref (criterion-e k opts)]
-    [(apply list 'or (map #(list '= e-ref %) vs))]))
+    [[e-ref :whatever '?whatever]]))
 
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs remap] :as opts}]
