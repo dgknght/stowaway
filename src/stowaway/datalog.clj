@@ -165,10 +165,12 @@
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
   [{:keys [relationships graph-apex graph]} clauses]
-  (let [entities (->> relationships seq flatten set)
-        shortest #(shortest-path graph graph-apex %)]
-    (sort (compare-where-clauses shortest entities)
-          clauses)))
+  (if (seq relationships)
+    (let [entities (->> relationships seq flatten set)
+          shortest #(shortest-path graph graph-apex %)]
+      (sort (compare-where-clauses shortest entities)
+            clauses))
+    clauses))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
@@ -200,8 +202,8 @@
        vs))
 
 (defmethod criterion->inputs :inclusion
-  [[_k [_ vs]]]
-  (set vs))
+  [[k [_ vs]]]
+  [[k (set vs)]])
 
 (defmethod criterion->inputs :match
   [[_k [_ m]]]
@@ -296,9 +298,12 @@
   [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
 
 (defmethod criterion->where :inclusion
-  [[k _v] opts]
-  (let [e-ref (criterion-e k opts)]
-    [[e-ref :whatever '?whatever]]))
+  [[k [_ vs]] {:as opts :keys [inputs]}]
+  (let [e-ref (criterion-e k opts)
+        a-ref (attr-ref k)
+        input (get-in inputs [k (set vs)])]
+    [[e-ref k a-ref]
+     [(list 'contains? input a-ref)]]))
 
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs remap] :as opts}]

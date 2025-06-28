@@ -272,8 +272,8 @@
 ; Common criteria 13: inclusion in a list
 (deftest query-against-inclusion-in-a-list
   (is (= '{:find [?x]
-           :where [[?x :account/type ?account-type]
-                   (contains? ?a ?account-type)]
+           :where [[?x :account/type ?type]
+                   [(contains? ?a ?type)]]
            :in [?a]
            :args [#{:asset :expense}]}
          (dtl/apply-criteria query
