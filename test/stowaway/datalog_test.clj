@@ -340,26 +340,40 @@
       "statements are added directly to the where chain"))
 
 (deftest apply-criteria-with-a-join
-  (is (= '{:find [?x]
-           :where [[?x :entity/owner ?a]
-                   [?commodity :commodity/entity ?x]
-                   [?commodity :commodity/symbol ?b]]
-           :in [?a ?b]
-           :args [101 "USD"]}
-         (dtl/apply-criteria query
-                             {:entity/owner 101
-                              :commodity/symbol "USD"}
-                             {:target :entity
-                              :relationships #{[:user :entity]
-                                               [:entity :commodity]}
-                              :graph-apex :user}))))
+  (testing "target has direct criterion"
+    (is (= '{:find [?x]
+             :where [[?x :entity/owner ?a]
+                     [?commodity :commodity/entity ?x]
+                     [?commodity :commodity/symbol ?b]]
+             :in [?a ?b]
+             :args [101 "USD"]}
+           (dtl/apply-criteria query
+                               {:entity/owner 101
+                                :commodity/symbol "USD"}
+                               {:target :entity
+                                :relationships #{[:user :entity]
+                                                 [:entity :commodity]}
+                                :graph-apex :user}))))
+  (testing "target has not direct criterion"
+    (is (= '{:find [?x]
+             :where [[?commodity :commodity/entity ?a]
+                     [?x :price/commodity ?commodity]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-criteria query
+                               {:commodity/entity {:id 101}}
+                               {:target :price
+                                :relationships #{[:entity :commodity]
+                                                 [:commodity :price]}
+                                :graph-apex :entity})))))
 
 (deftest query-combines-redundant-and-groups
   (is (= '{:find [?x]
            :in [?a ?b ?c ?d]
            :args ["2020-01-01" "2020-01-03" 101 102]
            :where
-           [[?x :transaction/date ?date]
+           [[?transaction-item :transaction-item/transaction ?x]
+            [?x :transaction/date ?date]
             [(>= ?date ?a)]
             [(<= ?date ?b)]
             (or-join [?c ?d]
@@ -378,7 +392,8 @@
                               [:or
                                #:transaction-item{:debit-account {:id 101}}
                                #:transaction-item{:credit-account {:id 102}}]]
-                             {:target :transaction}))))
+                             {:target :transaction
+                              :relationships #{[:transaction :transaction-item]}}))))
 
 (deftest apply-options
   (testing "limit"
