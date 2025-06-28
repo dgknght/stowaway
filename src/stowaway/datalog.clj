@@ -41,6 +41,7 @@
                     :=                  :explicit=
                     (:< :<= :> :>= :!=) :binary-pred
                     :and                :intersection
+                    :in                 :inclusion
                     :including          :including
                     :including-match    :entity-match
                     (:between
@@ -174,8 +175,11 @@
     (when (vector? v)
       (let [[oper] v]
         (case oper
-          (:> :>= :< :<= :in :!= := :including :between :<between :between> :<between>)
+          (:> :>= :< :<= :!= := :including :between :<between :between> :<between>)
           :pred
+
+          :in
+          :inclusion
 
           :including-match
           :match
@@ -194,6 +198,10 @@
   (mapv (fn [v]
          [k v])
        vs))
+
+(defmethod criterion->inputs :inclusion
+  [[k [_ vs]]]
+  [[k (set vs)]])
 
 (defmethod criterion->inputs :match
   [[_k [_ m]]]
@@ -286,6 +294,14 @@
 (defmethod criterion->where :explicit=
   [[k [_ v]] {:keys [inputs remap] :as opts}]
   [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
+
+(defmethod criterion->where :inclusion
+  [[k [_ vs]] {:as opts :keys [inputs]}]
+  (let [e-ref (criterion-e k opts)
+        a-ref (attr-ref k)
+        input (get-in inputs [k (set vs)])]
+    [[e-ref k a-ref]
+     [(list 'contains? input a-ref)]]))
 
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs remap] :as opts}]
