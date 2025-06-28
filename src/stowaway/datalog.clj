@@ -112,9 +112,9 @@
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
-  [criteria {:as opts :keys [graph]}]
+  [criteria {:as opts :keys [graph target]}]
   (let [namespaces (c/namespaces criteria {:as-keywords true})]
-    (when (< 1 (count namespaces))
+    (when (< 1 (count (conj namespaces (keyword target))))
       (let [source (or (:target opts)
                        (throw (ex-info "No target specified for criteria."
                                        {:options opts
@@ -124,6 +124,15 @@
             paths (g/shortest-paths source
                                     targets
                                     :graph graph)]
+
+        (when-not (seq paths)
+          (throw (ex-info (format "No path found from %s to %s"
+                                  source
+                                  targets)
+                          {:source source
+                           :targets targets
+                           :relationships rels})))
+
         (mapcat #(path->join-clauses % source rels)
                 paths)))))
 
