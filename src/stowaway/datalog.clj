@@ -166,9 +166,9 @@
   the relationship hierarchy first."
   [{:keys [relationships graph-apex graph]} clauses]
   (let [entities (->> relationships seq flatten set)
-          shortest #(shortest-path graph graph-apex %)]
-      (sort (compare-where-clauses shortest entities)
-            clauses)))
+        shortest #(shortest-path graph graph-apex %)]
+    (sort (compare-where-clauses shortest entities)
+          clauses)))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
