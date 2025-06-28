@@ -165,12 +165,10 @@
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
   [{:keys [relationships graph-apex graph]} clauses]
-  (if (seq relationships)
-    (let [entities (->> relationships seq flatten set)
+  (let [entities (->> relationships seq flatten set)
           shortest #(shortest-path graph graph-apex %)]
       (sort (compare-where-clauses shortest entities)
-            clauses))
-    clauses))
+            clauses)))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
