@@ -336,7 +336,7 @@
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select :transaction-item/quantity}))
-      "The entire select clause can be specified")
+      "The entire select clause can be specified as a single attribute")
   (is (= ["SELECT id FROM transaction_item WHERE transaction_item.reconciliation_id = ?"
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
@@ -347,7 +347,7 @@
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select [:transaction-item/quantity
                                 :transaction-item/value]}))
-      "The entire select clause can be specified")
+      "The entire select clause can be specified as a list of attributes")
   (is (= ["SELECT transaction_item.*, transaction.description FROM transaction_item INNER JOIN transaction ON transaction.id = transaction_item.transaction_id WHERE transaction_item.reconciliation_id = ?"
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
