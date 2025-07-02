@@ -442,15 +442,19 @@
         (assoc :where [(apply list 'match-and-recurse '?x in)]))
     query))
 
+(defn- prepare-criteria-options
+  [{:as opts :keys [relationships]} criteria]
+  (merge default-apply-criteria-options
+         {:target (c/single-ns criteria)
+          :graph (when relationships
+                   (apply uber/graph relationships))}
+         opts))
+
 (defn apply-criteria
   [query criteria & [{:as options :keys [recursion]}]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
-  (let [opts (merge default-apply-criteria-options
-                    {:target (c/single-ns criteria)
-                     :graph (when-let [rels (:relationships options)]
-                              (apply uber/graph rels))}
-                    options)
+  (let [opts (prepare-criteria-options options criteria)
         normalized (normalize-criteria criteria opts)
         inputs-map (extract-inputs normalized opts)
         [inputs args] (input-map->lists inputs-map)
