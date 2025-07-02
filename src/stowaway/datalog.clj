@@ -460,7 +460,8 @@
                    strip-redundant-and
                    (concat (:where query)
                            (extract-joining-clauses criteria opts))
-                   (sort-where-clauses opts))
+                   (sort-where-clauses opts)
+                   vec)
         recursion-rule (when recursion
                          (recursion-rule recursion where inputs))]
     (-> query
@@ -471,8 +472,7 @@
                                                (cons recursion-rule)))
         (assoc :where (if recursion
                         [(apply list 'match-and-recurse '?x inputs)]
-                        where))
-        (update-in [:where] vec))))
+                        where)))))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
