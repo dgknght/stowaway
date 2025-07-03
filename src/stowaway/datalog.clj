@@ -112,15 +112,18 @@
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
-  [criteria {:as opts :keys [graph target]}]
-  (let [namespaces (c/namespaces criteria {:as-keywords true})]
-    (when (< 1 (count (conj namespaces (keyword target))))
-      (let [source (or (:target opts)
+  [{:as ctx :keys [criteria graph target]}]
+  (let [namespaces (difference
+                     (c/namespaces criteria {:as-keywords true})
+                     #{:stowaway.datalog})]
+    (when (< 1 (count (cond-> namespaces
+                        target (conj (keyword target)))))
+      (let [source (or target
                        (throw (ex-info "No target specified for criteria."
-                                       {:options opts
+                                       {:options ctx
                                         :criteria criteria})))
             targets (difference namespaces #{source})
-            rels (:relationships opts)
+            rels (:relationships ctx)
             paths (g/shortest-paths source
                                     targets
                                     :graph graph)]
@@ -251,9 +254,9 @@
       (nth vals (swap! index inc)))))
 
 (defn- extract-inputs
-  [criteria opts]
+  [{:keys [criteria] :as ctx}]
   (extract-inputs* criteria
-                   (assoc opts
+                   (assoc ctx
                           :next-ident (dispense (map (comp symbol
                                                            #(str "?" %)
                                                            name)
@@ -285,7 +288,7 @@
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k v :as criterion] {:keys [inputs remap] :as opts}]
+  [[k v :as criterion] {:keys [inputs-map remap] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
   ; :in clause as the entity reference directly for simple equality tests
   ; We don't want to do that, though, if the attribute has been remapped
@@ -297,24 +300,24 @@
       [(if v
          [(criterion-e k opts)
           attr
-          (get-in inputs criterion)]
+          (get-in inputs-map criterion)]
          [(list 'missing? '$ (criterion-e k opts) attr)])])))
 
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs remap] :as opts}]
-  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
+  [[k [_ v]] {:keys [inputs-map remap] :as opts}]
+  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs-map [k v])]])
 
 (defmethod criterion->where :inclusion
-  [[k [_ vs]] {:as opts :keys [inputs]}]
+  [[k [_ vs]] {:as opts :keys [inputs-map]}]
   (let [e-ref (criterion-e k opts)
         a-ref (attr-ref k)
-        input (get-in inputs [k (set vs)])]
+        input (get-in inputs-map [k (set vs)])]
     [[e-ref k a-ref]
      [(list 'contains? input a-ref)]]))
 
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs remap] :as opts}]
-  (let [in (get-in inputs [k v])
+  [[k [pred v]] {:keys [inputs-map remap] :as opts}]
+  (let [in (get-in inputs-map [k v])
         attr (get-in remap [k] k)
         e-ref (criterion-e k opts)]
     (if (= :id attr)
@@ -324,9 +327,9 @@
          [(list (-> pred name symbol) ref in)]]))))
 
 (defmethod criterion->where :range
-  [[k [pred v1 v2]] {:keys [inputs remap] :as opts}]
-  (let [in1 (get-in inputs [k v1])
-        in2 (get-in inputs [k v2])
+  [[k [pred v1 v2]] {:keys [inputs-map remap] :as opts}]
+  (let [in1 (get-in inputs-map [k v1])
+        in2 (get-in inputs-map [k v2])
         attr (get-in remap [k] k)
         e-ref (criterion-e k opts)
         ref (symbol (str "?" (name k)))
@@ -340,12 +343,12 @@
      [(list pred2 ref in2)]]))
 
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs remap] :as opts}]
+  [[k [_ & cs]] {:keys [inputs-map remap] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
            [(criterion-e k opts) (get-in remap [k] k) ref]
            (map (fn [[pred v]]
-                  [(list (-> pred name symbol) ref (get-in inputs [k v]))])
+                  [(list (-> pred name symbol) ref (get-in inputs-map [k v]))])
                 cs))))
 
 (defmethod criterion->where :entity-match
@@ -356,8 +359,8 @@
                     match))))
 
 (defmethod criterion->where :including
-  [[k [_ match]] {:keys [entity-ref inputs]}]
-  [[entity-ref k (get-in inputs [k match])]])
+  [[k [_ match]] {:keys [entity-ref inputs-map]}]
+  [[entity-ref k (get-in inputs-map [k match])]])
 
 (defmulti ^:private criteria->where type-dispatch)
 
@@ -406,9 +409,11 @@
     x))
 
 (defn- normalize-criteria
-  [criteria opts]
-  (prewalk #(normalize-criterion % opts)
-            criteria))
+  [ctx]
+  (update-in ctx
+             [:criteria]
+             #(prewalk (fn [c] (normalize-criterion c ctx))
+                       %)))
 
 (def ^:private default-apply-criteria-options
   {:entity-ref '?x
@@ -423,60 +428,80 @@
     where))
 
 (defn- recursion-rule
-  [[rel-key upward?] where inputs]
-  [(apply vector (apply list 'match-and-recurse '?x inputs)
+  [{:keys [inputs entity-ref] [rel-key upward?] :recursion {:keys [where]} :query}]
+  [(apply vector (apply list 'match-and-recurse entity-ref inputs)
           where)
    [(apply list 'match-and-recurse '?x1 inputs)
     (cond-> ['?x1 rel-key '?x2]
       upward? reverse)
     (apply list 'match-and-recurse '?x2 inputs)]])
 
-(defn- apply-recursion
-  [{:as query :keys [in where]} {:keys [recursion]}]
-  (if recursion
-    (-> query
-        (update-in [:in] (fn [in] (cons '% in)))
-        (update-in [:args] (fn [args]
-                             (cons (recursion-rule recursion where in)
-                                   args)))
-        (assoc :where [(apply list 'match-and-recurse '?x in)]))
-    query))
+(defn- ensure-target
+  [{:keys [criteria] :as ctx}]
+  (update-in ctx [:target] #(if % % (-> criteria c/single-ns keyword))))
 
-(defn- prepare-criteria-options
-  [{:as opts :keys [relationships]} criteria]
-  (merge default-apply-criteria-options
-         {:target (c/single-ns criteria)
-          :graph (when relationships
-                   (apply uber/graph relationships))}
-         opts))
+(defn- calculate-graph
+  [{:keys [relationships] :as ctx}]
+  (cond-> ctx
+    relationships (assoc :graph (apply uber/graph relationships))))
+
+(defn- map-inputs
+  [ctx]
+  (let [inputs-map (extract-inputs ctx)
+        [inputs args] (input-map->lists inputs-map)]
+    (-> ctx
+        (assoc :inputs-map inputs-map
+               :inputs inputs
+               :args args))))
+
+(defn- append-where
+  [{:keys [criteria query] :as ctx}]
+  (assoc-in ctx
+            [:query :where]
+            (->> (criteria->where criteria ctx)
+                 strip-redundant-and
+                 (concat (:where query)
+                         (extract-joining-clauses ctx))
+                 (sort-where-clauses ctx)
+                 vec)))
+
+(defn- apply-to-in
+  [{:as ctx :keys [inputs]}]
+  (update-in ctx
+             [:query :in]
+             (fnil concat [])
+             inputs))
+
+(defn- apply-recursion
+  [{:as ctx :keys [recursion entity-ref inputs]}]
+  (if recursion
+    (-> ctx
+        (update-in [:inputs] (fn [inputs] (cons '% inputs)))
+        (update-in [:args] #(cons (recursion-rule ctx) %))
+        (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)]))
+    ctx))
+
+(defn- apply-to-args
+  [{:as ctx :keys [args]}]
+  (update-in ctx [:query :args] (fnil concat []) args))
 
 (defn apply-criteria
-  [query criteria & [{:as options :keys [recursion]}]]
+  [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
-  (let [opts (prepare-criteria-options options criteria)
-        normalized (normalize-criteria criteria opts)
-        inputs-map (extract-inputs normalized opts)
-        [inputs args] (input-map->lists inputs-map)
-        where (->> (criteria->where normalized
-                                    (assoc opts
-                                           :inputs inputs-map))
-                   strip-redundant-and
-                   (concat (:where query)
-                           (extract-joining-clauses criteria opts))
-                   (sort-where-clauses opts)
-                   vec)
-        recursion-rule (when recursion
-                         (recursion-rule recursion where inputs))]
-    (-> query
-        (update-in [:in] (fnil concat []) (cond->> inputs
-                                            recursion (cons '%)))
-        (update-in [:args]  (fnil concat []) (cond->> args
-                                               recursion-rule
-                                               (cons recursion-rule)))
-        (assoc :where (if recursion
-                        [(apply list 'match-and-recurse '?x inputs)]
-                        where)))))
+  (-> default-apply-criteria-options
+      (merge options
+             {:query query
+              :criteria criteria})
+      ensure-target
+      calculate-graph
+      normalize-criteria
+      map-inputs
+      append-where
+      apply-recursion
+      apply-to-in
+      apply-to-args
+      :query))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
