@@ -4,11 +4,8 @@
             [clojure.spec.alpha :as s]
             [clojure.set :refer [union
                                  intersection]]
+            [stowaway.core :as stow]
             [stowaway.util :refer [type-dispatch]]))
-
-(derive clojure.lang.PersistentVector ::vector)
-(derive clojure.lang.PersistentArrayMap ::map)
-(derive clojure.lang.PersistentHashMap ::map)
 
 (defmulti ^:private criteria-value type)
 
@@ -42,11 +39,11 @@
   [_]
   (s/spec nil?))
 
-(defmethod criteria-value ::map
+(defmethod criteria-value ::stow/map
   [_]
   (s/and map? #(contains? % :id)))
 
-(defmethod criteria-value ::vector
+(defmethod criteria-value ::stow/vector
   [_]
   (s/cat
     :predicate ::predicate
@@ -56,11 +53,11 @@
 
 (defmulti ^:private criteria type)
 
-(defmethod criteria ::map
+(defmethod criteria ::stow/map
   [_]
   (s/map-of keyword? ::criteria-value))
 
-(defmethod criteria ::vector
+(defmethod criteria ::stow/vector
   [_]
   (s/cat
     :conjunction ::conjunction
@@ -70,7 +67,7 @@
 
 (defmulti namespaces type-dispatch)
 
-(defmethod namespaces ::map
+(defmethod namespaces ::stow/map
   [m & [{:keys [as-keywords]}]]
   (let [xform (if as-keywords keyword identity)]
     (->> (keys m)
@@ -79,7 +76,7 @@
          (filter identity)
          (into #{}))))
 
-(defmethod namespaces ::vector
+(defmethod namespaces ::stow/vector
   [[_oper & criterias] & [opts]]
   (->> criterias
        (map #(namespaces % opts))
@@ -90,7 +87,7 @@
   that are applicable to the namespace."
   (fn [x _] (type x)))
 
-(defmethod extract-ns ::map
+(defmethod extract-ns ::stow/map
   [criteria n]
   (when-let [entries (->> (update-keys criteria
                                        (comp #(map keyword %)
@@ -100,7 +97,7 @@
                           seq)]
     (into {} entries)))
 
-(defmethod extract-ns ::vector
+(defmethod extract-ns ::stow/vector
   [[oper & criterias] n]
   (when-let [extracted (->> criterias
                             (map #(extract-ns % n))
@@ -151,7 +148,7 @@
   [v f args]
   (apply f v args))
 
-(defmethod apply-to-value* ::vector
+(defmethod apply-to-value* ::stow/vector
   [[oper & vs] f args]
   (apply vector oper (map #(apply f % args)
                           vs)))
@@ -182,11 +179,11 @@
   "Given a criteria (map or vector) apply the given function to each map"
   (fn [c _] (type c)))
 
- (defmethod apply-to ::map
+ (defmethod apply-to ::stow/map
    [criteria f & args]
    (apply f criteria args))
 
-(defmethod apply-to ::vector
+(defmethod apply-to ::stow/vector
   [[oper & cs :as criteria] f & args]
   (with-meta (apply vector
                     oper
