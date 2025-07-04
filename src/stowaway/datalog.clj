@@ -49,6 +49,7 @@
                      :between>
                      :<between>)        :range))))
 
+; TODO: Where was this used before?
 (defn- id?
   "Returns true if the given keyword specifies an entity id"
   [k]
@@ -57,13 +58,14 @@
 (defn- attr-ref
   "Given an attribute keyword, return a symbol that will represent
   the value in the query."
-  ([k] (attr-ref k nil))
-  ([k suffix]
-   (symbol (str "?"
-                (if (id? k)
-                  "x"
-                  (name k))
-                suffix))))
+  ([opts]
+   #(attr-ref % opts))
+  ([k {:keys [entity-ref suffix] :or {entity-ref '?x}}]
+   (if (= :id k)
+     entity-ref
+     (symbol (str "?"
+                (name k)
+                suffix)))))
 
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
@@ -112,17 +114,15 @@
 (defn- extract-joining-clauses
   "Given a criteria (map or vector) return the where clauses
   that join the different namespaces."
-  [{:as ctx :keys [criteria graph target]}]
+  [x {:as ctx :keys [graph] source :target}]
   (let [namespaces (difference
-                     (c/namespaces criteria {:as-keywords true})
+                     (c/namespaces x {:as-keywords true})
                      #{:stowaway.datalog})]
     (when (< 1 (count (cond-> namespaces
-                        target (conj (keyword target)))))
-      (let [source (or target
-                       (throw (ex-info "No target specified for criteria."
-                                       {:options ctx
-                                        :criteria criteria})))
-            targets (difference namespaces #{source})
+                        source (conj (keyword source)))))
+      (when-not source
+        (throw (ex-info "No target specified and unable to infer one." ctx)))
+      (let [targets (difference namespaces #{source})
             rels (:relationships ctx)
             paths (g/shortest-paths source
                                     targets
@@ -310,7 +310,7 @@
 (defmethod criterion->where :inclusion
   [[k [_ vs]] {:as opts :keys [inputs-map]}]
   (let [e-ref (criterion-e k opts)
-        a-ref (attr-ref k)
+        a-ref (attr-ref k opts)
         input (get-in inputs-map [k (set vs)])]
     [[e-ref k a-ref]
      [(list 'contains? input a-ref)]]))
@@ -436,9 +436,18 @@
       upward? reverse)
     (apply list 'match-and-recurse '?x2 inputs)]])
 
-(defn- ensure-target
-  [{:keys [criteria] :as ctx}]
-  (update-in ctx [:target] #(if % % (-> criteria c/single-ns keyword))))
+(defn- infer-target-from-where
+  [where {:keys [entity-ref] :or {entity-ref '?x}}]
+  (->> where
+       (filter #(= entity-ref (first %)))
+       (map #(-> % second namespace))
+       first))
+
+(defn- infer-target
+  [{:keys [criteria target query] :as ctx}]
+  (assoc ctx :target (or target
+                         (-> criteria c/single-ns keyword)
+                         (infer-target-from-where (:where query) ctx))))
 
 (defn- calculate-graph
   [{:keys [relationships] :as ctx}]
@@ -461,7 +470,7 @@
             (->> (criteria->where criteria ctx)
                  strip-redundant-and
                  (concat (:where query)
-                         (extract-joining-clauses ctx))
+                         (extract-joining-clauses criteria ctx))
                  (sort-where-clauses ctx)
                  vec)))
 
@@ -493,7 +502,7 @@
       (merge options
              {:query query
               :criteria criteria})
-      ensure-target
+      infer-target
       calculate-graph
       normalize-criteria
       map-inputs
@@ -503,6 +512,51 @@
       apply-to-args
       :query))
 
+(defn- ->vector
+  [x]
+  ((if (sequential? x) vec vector) x))
+
+(defn- apply-select-to-find
+  [query select {:keys [replace] :or {replace false} :as opts}]
+  (let [attrs (map (attr-ref opts) select)]
+    (if replace
+      (assoc query :find attrs)
+      (update-in query [:find] concat attrs))))
+
+(defn- apply-select-to-where
+  [query select {:keys [entity-ref] :or {entity-ref '?x} :as opts}]
+  (let [target (infer-target-from-where (:where query)
+                                        opts)]
+    (update-in query
+               [:where]
+               concat
+               (->> select
+                    (remove #(= :id %))
+                    (map #(let [n (namespace %)]
+                            (vector (if (= target n)
+                                      entity-ref
+                                      (symbol n))
+                                    %
+                                    (attr-ref % opts)))))
+               (extract-joining-clauses select opts))))
+
+(s/def ::select (s/or :scalar keyword?
+                      :vector (s/coll-of keyword?)))
+
+(s/def ::replace boolean?)
+
+(s/def ::select-opts (s/nilable (s/keys :opt-un [::replace
+                                                 ::entity-ref])))
+
+(defn apply-select
+  [query select & [opts]]
+  {:pre [(s/valid? ::select select)
+         (s/valid? ::select-opts opts)]}
+  (let [sel (->vector select)]
+    (-> query
+        (apply-select-to-find sel opts)
+        (apply-select-to-where sel opts))))
+
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
   (if (some #(= arg-ident (last %))
@@ -510,29 +564,32 @@
     query
     (update-in query [:where] conj* ['?x k arg-ident])))
 
-(defmulti apply-sort-segment
-  (fn [_query seg]
-    (when (vector? seg) :vector)))
+(defmulti apply-sort-segment*
+  (fn [_query seg _opts]
+    (type seg)))
 
-(defmethod apply-sort-segment :default
-  [query seg]
-  (apply-sort-segment query [seg :asc]))
+(defmethod apply-sort-segment* :default
+  [query seg opts]
+  (apply-sort-segment* query [seg :asc] opts))
 
-(defmethod apply-sort-segment :vector
-  [query [k dir]]
-  (let [arg-ident (attr-ref k)]
+(defmethod apply-sort-segment* ::stow/vector
+  [query [k dir] opts]
+  (let [arg-ident (attr-ref k opts)]
     (-> query
         (ensure-attr k arg-ident)
         (update-in [:find] conj* arg-ident)
         (update-in [:order-by] conj* [arg-ident dir]))))
 
+(defn- apply-sort-segment
+  [opts]
+  (fn [query seg]
+    (apply-sort-segment* query seg opts)))
+
 (defn- apply-sort
-  [query order-by]
-  (reduce apply-sort-segment
+  [query order-by & [opts]]
+  (reduce (apply-sort-segment opts)
           query
-          (if (coll? order-by)
-            order-by
-            [order-by])))
+          (->vector order-by)))
 
 (defn apply-options
   [query {:keys [limit offset order-by]} & {:as opts}]
