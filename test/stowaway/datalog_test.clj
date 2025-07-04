@@ -471,26 +471,25 @@
         "The entire select clause can be specified as a list of attributes")
     (is (= '{:find [?x ?transaction-date]
              :where [[?x :transaction-item/account ?a]
-                     [?x :transaction-item/transaction ?transaction]
-                     [?transaction :transaction/transaction-date ?transaction-date]]
+                     [?transaction :transaction/transaction-date ?transaction-date]
+                     [?x :transaction-item/transaction ?transaction]]
              :in [?a]
              :args [101]}
            (dtl/apply-select
              q
-             :transaction/transcation-date
+             :transaction/transaction-date
              {:relationships #{[:transaction :transaction-item]}}))
         "An additional select column can be specified from another model")
     (is (= '{:find [?x ?description ?memo]
-               :where [[?x :transaction-item/account ?a]
-                       [?x :transaction-item/transaction ?transaction]
-                       [?transaction :transaction/description ?description]
-                       [?transaction :transaction/memo ?memo]]
-               :in [?a]
-               :args [101]}
-             (dtl/apply-select
-               query
-               {:transaction-item/account {:id 101}}
-               {:select-also [:transaction/description
-                              :transaction/memo]
-                :relationships #{[:transaction :transaction-item]}}))
-          "Multiple additional select columns can be specified")))
+             :where [[?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?description]
+                     [?transaction :transaction/memo ?memo]
+                     [?x :transaction-item/transaction ?transaction]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             [:transaction/description
+              :transaction/memo]
+             {:relationships #{[:transaction :transaction-item]}}))
+        "Multiple additional select columns can be specified")))
