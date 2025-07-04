@@ -21,16 +21,6 @@
 (def ^:private conj*
   (fnil conj []))
 
-(def ^{:private true :dynamic true} *opts*
-  {:coerce identity
-   :args-key [:args]
-   :query-prefix []
-   :remap {}})
-
-(defn- remap
-  [k]
-  (get-in (:remap *opts*) [k] k))
-
 (defn- dispatch-criterion
   [c & _]
   {:pre [(vector? c)]}
@@ -48,12 +38,6 @@
                      :<between
                      :between>
                      :<between>)        :range))))
-
-; TODO: Where was this used before?
-(defn- id?
-  "Returns true if the given keyword specifies an entity id"
-  [k]
-  (= :id (remap k)))
 
 (defn- attr-ref
   "Given an attribute keyword, return a symbol that will represent
@@ -77,11 +61,6 @@
                                   ::target
                                   ::relationships
                                   ::graph-apex]))
-
-(defmacro ^:private with-options
-  [opts & body]
-  `(binding [*opts* (merge *opts* ~opts)]
-     ~@body))
 
 (defn- edge->join-clause
   "Given a graph edge (connection between two namespaces), a source
@@ -614,8 +593,7 @@
 
 (defn apply-options
   [query {:keys [limit offset order-by]} & {:as opts}]
-  (with-options opts
-    (cond-> query
-      limit (assoc :limit limit)
-      offset (assoc :offset offset)
-      order-by (apply-sort order-by))))
+  (cond-> query
+    limit (assoc :limit limit)
+    offset (assoc :offset offset)
+    order-by (apply-sort order-by opts)))
