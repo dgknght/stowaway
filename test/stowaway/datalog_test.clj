@@ -425,60 +425,72 @@
         "Multiple fields are handled appropriately")))
 
 (deftest specify-select-clause
-  (is (= '{:find [?amount]
-           :where [[?x :transaction-item/account ?a]
-                   [?x :transaction-item/amount ?amount]]
-           :in [?a]
-           :args [101]}
-         (dtl/apply-criteria
-           query
-           {:transaction-item/account {:id 101}}
-           {:select :transaction/transaction-date}))
-      "The entire select clause can be specified as an attribute")
-  (is (= '{:find [?x]
-           :where [[?x :transaction-item/account ?a]]
-           :in [?a]
-           :args [101]}
-         (dtl/apply-criteria
-           query
-           {:transaction-item/account {:id 101}}
-           {:select :id}))
-      "The select clause can include keywords without namespaces")
-  (is (= '{:find [?quantity ?value]
-           :where [[?x :transaction-item/account ?a]
-                   [?x :transaction-item/quantity ?quantity]
-                   [?x :transaction-item/value ?value]]
-           :in [?a]
-           :args [101]}
-         (dtl/apply-criteria
-           query
-           {:transaction-item/account {:id 101}}
-           {:select [:transaction-item/quantity
-                     :transaction-item/value]}))
-      "The entire select clause can be specified as a list of attributes")
-  (is (= '{:find [?x ?transaction-date]
-           :where [[?x :transaction-item/account ?a]
-                   [?x :transaction-item/transaction ?transaction]
-                   [?transaction :transaction/transaction-date ?transaction-date]]
-           :in [?a]
-           :args [101]}
-         (dtl/apply-criteria
-           query
-           {:transaction-item/account {:id 101}}
-           {:select-also :transaction/transaction-date
-            :relationships #{[:transaction :transaction-item]}}))
-      "An additional select column can be specified")
-  (is (= '{:find [?x ?description ?memo]
-           :where [[?x :transaction-item/account ?a]
-                   [?x :transaction-item/transaction ?transaction]
-                   [?transaction :transaction/description ?description]
-                   [?transaction :transaction/memo ?memo]]
-           :in [?a]
-           :args [101]}
-         (dtl/apply-criteria
-           query
-           {:transaction-item/account {:id 101}}
-           {:select-also [:transaction/description
-                          :transaction/memo]
-            :relationships #{[:transaction :transaction-item]}}))
-      "Multiple additional select columns can be specified"))
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?quantity]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/quantity ?quantity]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction-item/quantity
+             {:replace true}))
+        "The entire select clause can be specified as an attribute")
+    (is (= '{:find [?x]
+             :where [[?x :transaction-item/account ?a]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :id
+             {:replace true}))
+        "The select clause can reference the entity/id")
+    (is (= '{:find [?my-entity]
+             :where [[?my-entity :transaction-item/account ?a]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             (assoc q :where '[[?my-entity :transaction-item/account ?a]])
+             :id
+             {:replace true
+              :entity-ref '?my-entity}))
+        "The select clause can reference the id with a custom entity reference")
+    (is (= '{:find [?quantity ?value]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/quantity ?quantity]
+                     [?x :transaction-item/value ?value]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             [:transaction-item/quantity
+              :transaction-item/value]
+             {:replace true}))
+        "The entire select clause can be specified as a list of attributes")
+    (is (= '{:find [?x ?transaction-date]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/transaction-date ?transaction-date]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/transcation-date
+             {:relationships #{[:transaction :transaction-item]}}))
+        "An additional select column can be specified from another model")
+    (is (= '{:find [?x ?description ?memo]
+               :where [[?x :transaction-item/account ?a]
+                       [?x :transaction-item/transaction ?transaction]
+                       [?transaction :transaction/description ?description]
+                       [?transaction :transaction/memo ?memo]]
+               :in [?a]
+               :args [101]}
+             (dtl/apply-select
+               query
+               {:transaction-item/account {:id 101}}
+               {:select-also [:transaction/description
+                              :transaction/memo]
+                :relationships #{[:transaction :transaction-item]}}))
+          "Multiple additional select columns can be specified")))
