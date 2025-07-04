@@ -112,32 +112,45 @@
        (map #(edge->join-clause % source relationships))))
 
 (defn- extract-joining-clauses
-  "Given a criteria (map or vector) return the where clauses
-  that join the different namespaces."
-  [x {:as ctx :keys [graph] source :target}]
-  (let [namespaces (difference
-                     (c/namespaces x {:as-keywords true})
-                     #{:stowaway.datalog})]
+  [namespaces {:as ctx :keys [target graph relationships]}]
+  (let [source (keyword target)]
     (when (< 1 (count (cond-> namespaces
-                        source (conj (keyword source)))))
+                        source (conj source))))
+
       (when-not source
         (throw (ex-info "No target specified and unable to infer one." ctx)))
+
       (let [targets (difference namespaces #{source})
-            rels (:relationships ctx)
             paths (g/shortest-paths source
                                     targets
                                     :graph graph)]
-
         (when-not (seq paths)
           (throw (ex-info (format "No path found from %s to %s"
                                   source
                                   targets)
                           {:source source
                            :targets targets
-                           :relationships rels})))
+                           :relationships relationships})))
 
-        (mapcat #(path->join-clauses % source rels)
+        (mapcat #(path->join-clauses % source relationships)
                 paths)))))
+
+(defn- extract-joining-clauses-from-criteria
+  "Given a criteria (map or vector) return the where clauses
+  that join the different namespaces."
+  [x ctx]
+  (let [namespaces (difference
+                     (c/namespaces x {:as-keywords true})
+                     #{:stowaway.datalog})]
+    (extract-joining-clauses namespaces ctx)))
+
+(defn- extract-joining-clauses-from-attributes
+  [attrs opts]
+  (extract-joining-clauses (->> attrs
+                                (map (comp keyword namespace))
+                                (filter identity)
+                                set)
+                           opts))
 
 (defn- attr->sortable
   [shortest-path entities]
@@ -176,11 +189,13 @@
   "Given a sequence of where clause, sort the clauses with the aim of putting
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
-  [{:keys [relationships graph-apex graph]} clauses]
+  [{:keys [relationships graph-apex graph] :as ctx}]
   (let [entities (->> relationships seq flatten set)
         shortest #(shortest-path graph graph-apex %)]
-    (sort (compare-where-clauses shortest entities)
-          clauses)))
+    (update-in ctx
+               [:query :where]
+               #(sort (compare-where-clauses shortest entities)
+                      %))))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
@@ -446,7 +461,7 @@
 (defn- infer-target
   [{:keys [criteria target query] :as ctx}]
   (assoc ctx :target (or target
-                         (-> criteria c/single-ns keyword)
+                         (some-> criteria c/single-ns keyword)
                          (infer-target-from-where (:where query) ctx))))
 
 (defn- calculate-graph
@@ -470,8 +485,7 @@
             (->> (criteria->where criteria ctx)
                  strip-redundant-and
                  (concat (:where query)
-                         (extract-joining-clauses criteria ctx))
-                 (sort-where-clauses ctx)
+                         (extract-joining-clauses-from-criteria criteria ctx))
                  vec)))
 
 (defn- apply-to-in
@@ -507,6 +521,7 @@
       normalize-criteria
       map-inputs
       append-where
+      sort-where-clauses
       apply-recursion
       apply-to-in
       apply-to-args
@@ -517,28 +532,30 @@
   ((if (sequential? x) vec vector) x))
 
 (defn- apply-select-to-find
-  [query select {:keys [replace] :or {replace false} :as opts}]
-  (let [attrs (map (attr-ref opts) select)]
+  [{:keys [select replace] :or {replace false} :as ctx}]
+  (let [attrs (map (attr-ref ctx) select)]
     (if replace
-      (assoc query :find attrs)
-      (update-in query [:find] concat attrs))))
+      (assoc-in ctx [:query :find] attrs)
+      (update-in ctx [:query :find] concat attrs))))
 
 (defn- apply-select-to-where
-  [query select {:keys [entity-ref] :or {entity-ref '?x} :as opts}]
-  (let [target (infer-target-from-where (:where query)
-                                        opts)]
-    (update-in query
-               [:where]
-               concat
-               (->> select
-                    (remove #(= :id %))
-                    (map #(let [n (namespace %)]
-                            (vector (if (= target n)
-                                      entity-ref
-                                      (symbol n))
-                                    %
-                                    (attr-ref % opts)))))
-               (extract-joining-clauses select opts))))
+  [{:keys [select
+           entity-ref
+           target]
+    :or {entity-ref '?x}
+    :as ctx}]
+  (update-in ctx
+             [:query :where]
+             concat
+             (->> select
+                  (remove #(= :id %))
+                  (map #(let [n (namespace %)]
+                          (vector (if (= target n)
+                                    entity-ref
+                                    (symbol (str "?" n)))
+                                  %
+                                  (attr-ref % ctx)))))
+             (extract-joining-clauses-from-attributes select ctx)))
 
 (s/def ::select (s/or :scalar keyword?
                       :vector (s/coll-of keyword?)))
@@ -552,10 +569,14 @@
   [query select & [opts]]
   {:pre [(s/valid? ::select select)
          (s/valid? ::select-opts opts)]}
-  (let [sel (->vector select)]
-    (-> query
-        (apply-select-to-find sel opts)
-        (apply-select-to-where sel opts))))
+  (-> opts
+      (merge {:query query
+              :select (->vector select)})
+      infer-target
+      calculate-graph
+      apply-select-to-find
+      apply-select-to-where
+      :query))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
