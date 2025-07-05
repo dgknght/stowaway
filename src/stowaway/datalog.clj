@@ -457,7 +457,7 @@
                :inputs inputs
                :args args))))
 
-(defn- append-where
+(defn- apply-criteria-to-where
   [{:keys [criteria query] :as ctx}]
   (assoc-in ctx
             [:query :where]
@@ -467,7 +467,7 @@
                          (extract-joining-clauses-from-criteria criteria ctx))
                  vec)))
 
-(defn- apply-to-in
+(defn- apply-criteria-to-in
   [{:as ctx :keys [inputs]}]
   (update-in ctx
              [:query :in]
@@ -483,7 +483,7 @@
         (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)]))
     ctx))
 
-(defn- apply-to-args
+(defn- apply-criteria-to-args
   [{:as ctx :keys [args]}]
   (update-in ctx [:query :args] (fnil concat []) args))
 
@@ -499,11 +499,11 @@
       calculate-graph
       normalize-criteria
       map-inputs
-      append-where
+      apply-criteria-to-where
       sort-where-clauses
       apply-recursion
-      apply-to-in
-      apply-to-args
+      apply-criteria-to-in
+      apply-criteria-to-args
       :query))
 
 (defn- ->vector
