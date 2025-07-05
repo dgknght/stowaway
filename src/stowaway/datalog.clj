@@ -21,16 +21,6 @@
 (def ^:private conj*
   (fnil conj []))
 
-(def ^{:private true :dynamic true} *opts*
-  {:coerce identity
-   :args-key [:args]
-   :query-prefix []
-   :remap {}})
-
-(defn- remap
-  [k]
-  (get-in (:remap *opts*) [k] k))
-
 (defn- dispatch-criterion
   [c & _]
   {:pre [(vector? c)]}
@@ -49,21 +39,17 @@
                      :between>
                      :<between>)        :range))))
 
-(defn- id?
-  "Returns true if the given keyword specifies an entity id"
-  [k]
-  (= :id (remap k)))
-
 (defn- attr-ref
   "Given an attribute keyword, return a symbol that will represent
   the value in the query."
-  ([k] (attr-ref k nil))
-  ([k suffix]
-   (symbol (str "?"
-                (if (id? k)
-                  "x"
-                  (name k))
-                suffix))))
+  ([opts]
+   #(attr-ref % opts))
+  ([k {:keys [entity-ref suffix] :or {entity-ref '?x}}]
+   (if (= :id k)
+     entity-ref
+     (symbol (str "?"
+                (name k)
+                suffix)))))
 
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
@@ -75,11 +61,6 @@
                                   ::target
                                   ::relationships
                                   ::graph-apex]))
-
-(defmacro ^:private with-options
-  [opts & body]
-  `(binding [*opts* (merge *opts* ~opts)]
-     ~@body))
 
 (defn- edge->join-clause
   "Given a graph edge (connection between two namespaces), a source
@@ -110,31 +91,45 @@
        (map #(edge->join-clause % source relationships))))
 
 (defn- extract-joining-clauses
-  "Given a criteria (map or vector) return the where clauses
-  that join the different namespaces."
-  [criteria {:as opts :keys [graph target]}]
-  (let [namespaces (c/namespaces criteria {:as-keywords true})]
-    (when (< 1 (count (conj namespaces (keyword target))))
-      (let [source (or (:target opts)
-                       (throw (ex-info "No target specified for criteria."
-                                       {:options opts
-                                        :criteria criteria})))
-            targets (difference namespaces #{source})
-            rels (:relationships opts)
+  [namespaces {:as ctx :keys [target graph relationships]}]
+  (let [source (keyword target)]
+    (when (< 1 (count (cond-> namespaces
+                        source (conj source))))
+
+      (when-not source
+        (throw (ex-info "No target specified and unable to infer one." ctx)))
+
+      (let [targets (difference namespaces #{source})
             paths (g/shortest-paths source
                                     targets
                                     :graph graph)]
-
         (when-not (seq paths)
           (throw (ex-info (format "No path found from %s to %s"
                                   source
                                   targets)
                           {:source source
                            :targets targets
-                           :relationships rels})))
+                           :relationships relationships})))
 
-        (mapcat #(path->join-clauses % source rels)
+        (mapcat #(path->join-clauses % source relationships)
                 paths)))))
+
+(defn- extract-joining-clauses-from-criteria
+  "Given a criteria (map or vector) return the where clauses
+  that join the different namespaces."
+  [x ctx]
+  (let [namespaces (difference
+                     (c/namespaces x {:as-keywords true})
+                     #{:stowaway.datalog})]
+    (extract-joining-clauses namespaces ctx)))
+
+(defn- extract-joining-clauses-from-attributes
+  [attrs opts]
+  (extract-joining-clauses (->> attrs
+                                (map (comp keyword namespace))
+                                (filter identity)
+                                set)
+                           opts))
 
 (defn- attr->sortable
   [shortest-path entities]
@@ -173,11 +168,13 @@
   "Given a sequence of where clause, sort the clauses with the aim of putting
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
-  [{:keys [relationships graph-apex graph]} clauses]
+  [{:keys [relationships graph-apex graph] :as ctx}]
   (let [entities (->> relationships seq flatten set)
         shortest #(shortest-path graph graph-apex %)]
-    (sort (compare-where-clauses shortest entities)
-          clauses)))
+    (update-in ctx
+               [:query :where]
+               #(sort (compare-where-clauses shortest entities)
+                      %))))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
@@ -251,9 +248,9 @@
       (nth vals (swap! index inc)))))
 
 (defn- extract-inputs
-  [criteria opts]
+  [{:keys [criteria] :as ctx}]
   (extract-inputs* criteria
-                   (assoc opts
+                   (assoc ctx
                           :next-ident (dispense (map (comp symbol
                                                            #(str "?" %)
                                                            name)
@@ -285,7 +282,7 @@
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k v :as criterion] {:keys [inputs remap] :as opts}]
+  [[k v :as criterion] {:keys [inputs-map remap] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
   ; :in clause as the entity reference directly for simple equality tests
   ; We don't want to do that, though, if the attribute has been remapped
@@ -297,24 +294,24 @@
       [(if v
          [(criterion-e k opts)
           attr
-          (get-in inputs criterion)]
+          (get-in inputs-map criterion)]
          [(list 'missing? '$ (criterion-e k opts) attr)])])))
 
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs remap] :as opts}]
-  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs [k v])]])
+  [[k [_ v]] {:keys [inputs-map remap] :as opts}]
+  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs-map [k v])]])
 
 (defmethod criterion->where :inclusion
-  [[k [_ vs]] {:as opts :keys [inputs]}]
+  [[k [_ vs]] {:as opts :keys [inputs-map]}]
   (let [e-ref (criterion-e k opts)
-        a-ref (attr-ref k)
-        input (get-in inputs [k (set vs)])]
-    [[e-ref k a-ref]
-     [(list 'contains? input a-ref)]]))
+        a-ref (attr-ref k opts)
+        input (get-in inputs-map [k (set vs)])]
+    (cond->> [[(list 'contains? input a-ref)]]
+      (not= :id k) (cons [e-ref k a-ref]))))
 
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs remap] :as opts}]
-  (let [in (get-in inputs [k v])
+  [[k [pred v]] {:keys [inputs-map remap] :as opts}]
+  (let [in (get-in inputs-map [k v])
         attr (get-in remap [k] k)
         e-ref (criterion-e k opts)]
     (if (= :id attr)
@@ -324,9 +321,9 @@
          [(list (-> pred name symbol) ref in)]]))))
 
 (defmethod criterion->where :range
-  [[k [pred v1 v2]] {:keys [inputs remap] :as opts}]
-  (let [in1 (get-in inputs [k v1])
-        in2 (get-in inputs [k v2])
+  [[k [pred v1 v2]] {:keys [inputs-map remap] :as opts}]
+  (let [in1 (get-in inputs-map [k v1])
+        in2 (get-in inputs-map [k v2])
         attr (get-in remap [k] k)
         e-ref (criterion-e k opts)
         ref (symbol (str "?" (name k)))
@@ -340,12 +337,12 @@
      [(list pred2 ref in2)]]))
 
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs remap] :as opts}]
+  [[k [_ & cs]] {:keys [inputs-map remap] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
            [(criterion-e k opts) (get-in remap [k] k) ref]
            (map (fn [[pred v]]
-                  [(list (-> pred name symbol) ref (get-in inputs [k v]))])
+                  [(list (-> pred name symbol) ref (get-in inputs-map [k v]))])
                 cs))))
 
 (defmethod criterion->where :entity-match
@@ -356,8 +353,8 @@
                     match))))
 
 (defmethod criterion->where :including
-  [[k [_ match]] {:keys [entity-ref inputs]}]
-  [[entity-ref k (get-in inputs [k match])]])
+  [[k [_ match]] {:keys [entity-ref inputs-map]}]
+  [[entity-ref k (get-in inputs-map [k match])]])
 
 (defmulti ^:private criteria->where type-dispatch)
 
@@ -406,9 +403,11 @@
     x))
 
 (defn- normalize-criteria
-  [criteria opts]
-  (prewalk #(normalize-criterion % opts)
-            criteria))
+  [ctx]
+  (update-in ctx
+             [:criteria]
+             #(prewalk (fn [c] (normalize-criterion c ctx))
+                       %)))
 
 (def ^:private default-apply-criteria-options
   {:entity-ref '?x
@@ -423,56 +422,140 @@
     where))
 
 (defn- recursion-rule
-  [[rel-key upward?] where inputs]
-  [(apply vector (apply list 'match-and-recurse '?x inputs)
+  [{:keys [inputs entity-ref] [rel-key upward?] :recursion {:keys [where]} :query}]
+  [(apply vector (apply list 'match-and-recurse entity-ref inputs)
           where)
    [(apply list 'match-and-recurse '?x1 inputs)
     (cond-> ['?x1 rel-key '?x2]
       upward? reverse)
     (apply list 'match-and-recurse '?x2 inputs)]])
 
+(defn- infer-target-from-where
+  [where {:keys [entity-ref] :or {entity-ref '?x}}]
+  (->> where
+       (filter #(= entity-ref (first %)))
+       (map #(-> % second namespace))
+       first))
+
+(defn- infer-target
+  [{:keys [criteria target query] :as ctx}]
+  (assoc ctx :target (or target
+                         (some-> criteria c/single-ns keyword)
+                         (infer-target-from-where (:where query) ctx))))
+
+(defn- calculate-graph
+  [{:keys [relationships] :as ctx}]
+  (cond-> ctx
+    relationships (assoc :graph (apply uber/graph relationships))))
+
+(defn- map-inputs
+  [ctx]
+  (let [inputs-map (extract-inputs ctx)
+        [inputs args] (input-map->lists inputs-map)]
+    (-> ctx
+        (assoc :inputs-map inputs-map
+               :inputs inputs
+               :args args))))
+
+(defn- apply-criteria-to-where
+  [{:keys [criteria query] :as ctx}]
+  (assoc-in ctx
+            [:query :where]
+            (->> (criteria->where criteria ctx)
+                 strip-redundant-and
+                 (concat (:where query)
+                         (extract-joining-clauses-from-criteria criteria ctx))
+                 vec)))
+
+(defn- apply-criteria-to-in
+  [{:as ctx :keys [inputs]}]
+  (update-in ctx
+             [:query :in]
+             (fnil concat [])
+             inputs))
+
 (defn- apply-recursion
-  [{:as query :keys [in where]} {:keys [recursion]}]
+  [{:as ctx :keys [recursion entity-ref inputs]}]
   (if recursion
-    (-> query
-        (update-in [:in] (fn [in] (cons '% in)))
-        (update-in [:args] (fn [args]
-                             (cons (recursion-rule recursion where in)
-                                   args)))
-        (assoc :where [(apply list 'match-and-recurse '?x in)]))
-    query))
+    (-> ctx
+        (update-in [:inputs] (fn [inputs] (cons '% inputs)))
+        (update-in [:args] #(cons (recursion-rule ctx) %))
+        (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)]))
+    ctx))
+
+(defn- apply-criteria-to-args
+  [{:as ctx :keys [args]}]
+  (update-in ctx [:query :args] (fnil concat []) args))
 
 (defn apply-criteria
-  [query criteria & [{:as options :keys [recursion]}]]
+  [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
-  (let [opts (merge default-apply-criteria-options
-                    {:target (c/single-ns criteria)
-                     :graph (when-let [rels (:relationships options)]
-                              (apply uber/graph rels))}
-                    options)
-        normalized (normalize-criteria criteria opts)
-        inputs-map (extract-inputs normalized opts)
-        [inputs args] (input-map->lists inputs-map)
-        where (->> (criteria->where normalized
-                                    (assoc opts
-                                           :inputs inputs-map))
-                   strip-redundant-and
-                   (concat (:where query)
-                           (extract-joining-clauses criteria opts))
-                   (sort-where-clauses opts))
-        recursion-rule (when recursion
-                         (recursion-rule recursion where inputs))]
-    (-> query
-        (update-in [:in] (fnil concat []) (cond->> inputs
-                                            recursion (cons '%)))
-        (update-in [:args]  (fnil concat []) (cond->> args
-                                               recursion-rule
-                                               (cons recursion-rule)))
-        (assoc :where (if recursion
-                        [(apply list 'match-and-recurse '?x inputs)]
-                        where))
-        (update-in [:where] vec))))
+  (-> default-apply-criteria-options
+      (merge options
+             {:query query
+              :criteria criteria})
+      infer-target
+      calculate-graph
+      normalize-criteria
+      map-inputs
+      apply-criteria-to-where
+      sort-where-clauses
+      apply-recursion
+      apply-criteria-to-in
+      apply-criteria-to-args
+      :query))
+
+(defn- ->vector
+  [x]
+  ((if (sequential? x) vec vector) x))
+
+(defn- apply-select-to-find
+  [{:keys [select replace] :or {replace false} :as ctx}]
+  (let [attrs (map (attr-ref ctx) select)]
+    (if replace
+      (assoc-in ctx [:query :find] attrs)
+      (update-in ctx [:query :find] concat attrs))))
+
+(defn- apply-select-to-where
+  [{:keys [select
+           entity-ref
+           target]
+    :or {entity-ref '?x}
+    :as ctx}]
+  (update-in ctx
+             [:query :where]
+             concat
+             (->> select
+                  (remove #(= :id %))
+                  (map #(let [n (namespace %)]
+                          (vector (if (= target n)
+                                    entity-ref
+                                    (symbol (str "?" n)))
+                                  %
+                                  (attr-ref % ctx)))))
+             (extract-joining-clauses-from-attributes select ctx)))
+
+(s/def ::select (s/or :scalar keyword?
+                      :vector (s/coll-of keyword?)))
+
+(s/def ::replace boolean?)
+
+(s/def ::select-opts (s/nilable (s/keys :opt-un [::replace
+                                                 ::entity-ref])))
+
+(defn apply-select
+  [query select & [opts]]
+  {:pre [(s/valid? ::select select)
+         (s/valid? ::select-opts opts)]}
+  (-> opts
+      (merge {:query query
+              :select (->vector select)})
+      infer-target
+      calculate-graph
+      apply-select-to-find
+      apply-select-to-where
+      :query))
 
 (defn- ensure-attr
   [{:keys [where] :as query} k arg-ident]
@@ -481,34 +564,36 @@
     query
     (update-in query [:where] conj* ['?x k arg-ident])))
 
-(defmulti apply-sort-segment
-  (fn [_query seg]
-    (when (vector? seg) :vector)))
+(defmulti apply-sort-segment*
+  (fn [_query seg _opts]
+    (type seg)))
 
-(defmethod apply-sort-segment :default
-  [query seg]
-  (apply-sort-segment query [seg :asc]))
+(defmethod apply-sort-segment* :default
+  [query seg opts]
+  (apply-sort-segment* query [seg :asc] opts))
 
-(defmethod apply-sort-segment :vector
-  [query [k dir]]
-  (let [arg-ident (attr-ref k)]
+(defmethod apply-sort-segment* ::stow/vector
+  [query [k dir] opts]
+  (let [arg-ident (attr-ref k opts)]
     (-> query
         (ensure-attr k arg-ident)
         (update-in [:find] conj* arg-ident)
         (update-in [:order-by] conj* [arg-ident dir]))))
 
+(defn- apply-sort-segment
+  [opts]
+  (fn [query seg]
+    (apply-sort-segment* query seg opts)))
+
 (defn- apply-sort
-  [query order-by]
-  (reduce apply-sort-segment
+  [query order-by & [opts]]
+  (reduce (apply-sort-segment opts)
           query
-          (if (coll? order-by)
-            order-by
-            [order-by])))
+          (->vector order-by)))
 
 (defn apply-options
   [query {:keys [limit offset order-by]} & {:as opts}]
-  (with-options opts
-    (cond-> query
-      limit (assoc :limit limit)
-      offset (assoc :offset offset)
-      order-by (apply-sort order-by))))
+  (cond-> query
+    limit (assoc :limit limit)
+    offset (assoc :offset offset)
+    order-by (apply-sort order-by opts)))
