@@ -306,8 +306,8 @@
   (let [e-ref (criterion-e k opts)
         a-ref (attr-ref k opts)
         input (get-in inputs-map [k (set vs)])]
-    [[e-ref k a-ref]
-     [(list 'contains? input a-ref)]]))
+    (cond->> [[(list 'contains? input a-ref)]]
+      (not= :id k) (cons [e-ref k a-ref]))))
 
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs-map remap] :as opts}]
