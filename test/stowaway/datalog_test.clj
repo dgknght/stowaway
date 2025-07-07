@@ -250,24 +250,40 @@
 
 ; Common criteria 12: recursion
 (deftest query-with-recursion
-  (is (= '{:find [?x]
-           :where [(match-and-recurse ?x ?a ?b)]
-           :in [$ % ?a ?b]
-           :args [::db ; this is a placeholder for the db in this test
-                  [[(match-and-recurse ?x ?a ?b)
-                    [?x :account/name ?a]
-                    [?x :account/type ?b]]
-                   [(match-and-recurse ?x1 ?a ?b)
-                    [?x1 :account/parent ?x2]
-                    (match-and-recurse ?x2 ?a ?b)]]
-                  "Checking"
-                  :asset]}
-         (dtl/apply-criteria (assoc query
-                                    :in ['$]
-                                    :args [::db])
-                             {:account/name "Checking"
-                              :account/type :asset}
-                             {:recursion [:account/parent]}))))
+  (testing "Filter by non-id attributes"
+    (is (= '{:find [?x]
+             :where [(match-and-recurse ?x ?a ?b)]
+             :in [$ % ?a ?b]
+             :args [::db ; this is a placeholder for the db in this test
+                    [[(match-and-recurse ?x ?a ?b)
+                      [?x :account/name ?a]
+                      [?x :account/type ?b]]
+                     [(match-and-recurse ?x1 ?a ?b)
+                      [?x1 :account/parent ?x2]
+                      (match-and-recurse ?x2 ?a ?b)]]
+                    "Checking"
+                    :asset]}
+           (dtl/apply-criteria (assoc query
+                                      :in ['$]
+                                      :args [::db])
+                               {:account/name "Checking"
+                                :account/type :asset}
+                               {:recursion [:account/parent]}))))
+  (testing "Filter by id"
+    (is (= '{:find [?x]
+             :where [(match-and-recurse ?x ?id)]
+             :in [$ % ?id]
+             :args [::db
+                    [[(match-and-recurse ?x ?target)
+                      [(= ?x ?target)]]
+                     [(match-and-recurse ?x ?target)
+                      [?x :account/parent ?parent]
+                      (match-and-recurse ?parent ?target)]]
+                    101]}
+           (dtl/apply-criteria '{:find [?x]
+                                 :where [[?x :account/name ?account-name]]}
+                               {:id 101}
+                               {:recursion [:account/parent]})))))
 
 ; Common criteria 13: inclusion in a list
 (deftest query-against-inclusion-in-a-list
