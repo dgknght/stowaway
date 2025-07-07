@@ -422,8 +422,11 @@
     where))
 
 (defn- recursion-rule
-  [{:keys [inputs entity-ref] [rel-key upward?] :recursion {:keys [where]} :query}]
-  [(apply vector (apply list 'match-and-recurse entity-ref inputs)
+  [{:keys [inputs entity-ref]
+    [rel-key upward?] :recursion
+    {:keys [where]} :query}]
+  [(apply vector
+          (apply list 'match-and-recurse entity-ref inputs)
           where)
    [(apply list 'match-and-recurse '?x1 inputs)
     (cond-> ['?x1 rel-key '?x2]
