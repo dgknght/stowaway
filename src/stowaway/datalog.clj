@@ -486,19 +486,26 @@
       upward? reverse)
     (apply list 'match-and-recurse '?x2 inputs)]])
 
-(defn- apply-recursion
-  [{:as ctx :keys [recursion criteria entity-ref]}]
-  (if recursion
-    (let [[rules inputs] (if (= #{::id} (->> criteria keys set))
-                           [(recursive-id-match ctx)
-                            ['?id]]
-                           [(recursive-attr-match ctx)
-                            (:inputs ctx)])]
-      (-> ctx
-          (assoc :inputs (cons '% inputs))
-          (update-in [:args] #(cons rules %))
-          (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)])))
+(defn- apply-recursive-id-match
+  [{:as ctx :keys [entity-ref]}]
+  (-> ctx
+      (assoc :inputs '[% ?id] )
+      (update-in [:args] #(cons (recursive-id-match ctx) %))
+      (update-in [:query :where] #(concat % [(list 'match-and-recurse entity-ref '?id)]))))
 
+(defn- apply-recursive-attr-match
+  [{:as ctx :keys [entity-ref inputs]}]
+  (-> ctx
+      (update-in [:inputs] (fn [inputs] (cons '% inputs)))
+      (update-in [:args] #(cons (recursive-attr-match ctx) %))
+      (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)])))
+
+(defn- apply-recursion
+  [{:as ctx :keys [recursion criteria]}]
+  (if recursion
+    (if (= #{::id} (->> criteria keys set))
+      (apply-recursive-id-match ctx)
+      (apply-recursive-attr-match ctx))
     ctx))
 
 (defn- apply-criteria-to-args

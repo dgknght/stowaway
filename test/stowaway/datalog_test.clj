@@ -271,7 +271,8 @@
                                {:recursion [:account/parent]}))))
   (testing "Filter by id"
     (is (= '{:find [?x]
-             :where [(match-and-recurse ?x ?id)]
+             :where [[?x :account/name ?account-name]
+                     (match-and-recurse ?x ?id)]
              :in [$ % ?id]
              :args [::db
                     [[(match-and-recurse ?x ?target)
