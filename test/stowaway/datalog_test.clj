@@ -276,12 +276,14 @@
              :args [::db
                     [[(match-and-recurse ?x ?target)
                       [(= ?x ?target)]]
-                     [(match-and-recurse ?x ?target)
-                      [?x :account/parent ?parent]
-                      (match-and-recurse ?parent ?target)]]
+                     [(match-and-recurse ?x1 ?target)
+                      [?x1 :account/parent ?x2]
+                      (match-and-recurse ?x2 ?target)]]
                     101]}
            (dtl/apply-criteria '{:find [?x]
-                                 :where [[?x :account/name ?account-name]]}
+                                 :where [[?x :account/name ?account-name]]
+                                 :in [$]
+                                 :args [::db]}
                                {:id 101}
                                {:recursion [:account/parent]})))))
 

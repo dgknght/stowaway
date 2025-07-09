@@ -421,18 +421,6 @@
     (apply vector (rest (first where)))
     where))
 
-(defn- recursion-rule
-  [{:keys [inputs entity-ref]
-    [rel-key upward?] :recursion
-    {:keys [where]} :query}]
-  [(apply vector
-          (apply list 'match-and-recurse entity-ref inputs)
-          where)
-   [(apply list 'match-and-recurse '?x1 inputs)
-    (cond-> ['?x1 rel-key '?x2]
-      upward? reverse)
-    (apply list 'match-and-recurse '?x2 inputs)]])
-
 (defn- infer-target-from-where
   [where {:keys [entity-ref] :or {entity-ref '?x}}]
   (->> where
@@ -477,13 +465,40 @@
              (fnil concat [])
              inputs))
 
+(defn- recursive-id-match
+  [{[rel-key upward?] :recursion}]
+  [[(list 'match-and-recurse '?x '?target)
+    ['(= ?x ?target)]]
+   [(list 'match-and-recurse '?x1 '?target)
+    (cond-> ['?x1 rel-key '?x2]
+      upward? reverse)
+    (list 'match-and-recurse '?x2 '?target)]])
+
+(defn- recursive-attr-match
+  [{:keys [inputs]
+    [rel-key upward?] :recursion
+    {:keys [where]} :query}]
+  [(apply vector
+          (apply list 'match-and-recurse '?x inputs)
+          where)
+   [(apply list 'match-and-recurse '?x1 inputs)
+    (cond-> ['?x1 rel-key '?x2]
+      upward? reverse)
+    (apply list 'match-and-recurse '?x2 inputs)]])
+
 (defn- apply-recursion
-  [{:as ctx :keys [recursion entity-ref inputs]}]
+  [{:as ctx :keys [recursion criteria entity-ref]}]
   (if recursion
-    (-> ctx
-        (update-in [:inputs] (fn [inputs] (cons '% inputs)))
-        (update-in [:args] #(cons (recursion-rule ctx) %))
-        (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)]))
+    (let [[rules inputs] (if (= #{::id} (->> criteria keys set))
+                           [(recursive-id-match ctx)
+                            ['?id]]
+                           [(recursive-attr-match ctx)
+                            (:inputs ctx)])]
+      (-> ctx
+          (assoc :inputs (cons '% inputs))
+          (update-in [:args] #(cons rules %))
+          (assoc-in [:query :where] [(apply list 'match-and-recurse entity-ref inputs)])))
+
     ctx))
 
 (defn- apply-criteria-to-args
