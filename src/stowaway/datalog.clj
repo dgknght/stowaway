@@ -54,7 +54,9 @@
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
 (s/def ::target keyword?)
-(s/def ::relationships (s/coll-of (s/tuple keyword? keyword?) :kind set?))
+(s/def ::relationship (s/or :plain   (s/tuple keyword? keyword?)
+                            :aliased (s/tuple keyword? keyword? keyword?)))
+(s/def ::relationships (s/coll-of ::relationship :kind set?))
 (s/def ::graph-apex keyword?)
 (s/def ::options (s/keys :opt-un [::entity-ref
                                   ::remap
@@ -67,14 +69,23 @@
   namespace, and a set of relationships, return a where clause that
   joins the two namespaces."
   [edge source relationships]
-  (let [[parent child] (some relationships
-                             [edge
-                              (reverse edge)])
+  (let [rels (->> relationships
+                  (map (fn [[k v]]
+                         [#{k v}
+                          [k v]]))
+                  (into {}))
+        rel-key (set edge)
+        aliases (->> relationships
+                     (filter #(= 3 (count %)))
+                     (map (fn [[k v a]]
+                            [#{k v} a]))
+                     (into {}))
+        [parent child] (rels rel-key)
         entity-ref (if (= source child)
                      '?x
                      (symbol (format "?%s" (name child))))
         attr (keyword (name child)
-                      (name parent))
+                      (name (aliases rel-key parent)))
         other-entity-ref (if (= source parent)
                            '?x
                            (symbol (format "?%s" (name parent))))]
@@ -437,7 +448,9 @@
 (defn- calculate-graph
   [{:keys [relationships] :as ctx}]
   (cond-> ctx
-    relationships (assoc :graph (apply uber/graph relationships))))
+    relationships (assoc :graph (apply uber/graph
+                                       (map (comp vec (partial take 2))
+                                            relationships)))))
 
 (defn- map-inputs
   [ctx]

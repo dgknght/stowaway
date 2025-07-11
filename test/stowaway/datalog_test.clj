@@ -373,7 +373,7 @@
                                 :relationships #{[:user :entity]
                                                  [:entity :commodity]}
                                 :graph-apex :user}))))
-  (testing "target has not direct criterion"
+  (testing "target has no direct criterion"
     (is (= '{:find [?x]
              :where [[?commodity :commodity/entity ?a]
                      [?x :price/commodity ?commodity]]
@@ -413,6 +413,32 @@
                                #:transaction-item{:credit-account {:id 102}}]]
                              {:target :transaction
                               :relationships #{[:transaction :transaction-item]}}))))
+
+(deftest join-against-cardinality-many
+  (testing "implicit attribute name"
+    (is (= '{:find [?x]
+             :in [?a ?b]
+             :where [[?transaction :transaction/transaction-item ?x]
+                     [?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?b]]
+             :args [101 "Starbucks"]}
+           (dtl/apply-criteria query
+                               {:transaction-item/account {:id 101}
+                                :transaction/description "Starbucks"}
+                               {:target :transaction-item
+                                :relationships #{[:transaction-item :transaction]}}))))
+  (testing "explicit attribute name"
+    (is (= '{:find [?x]
+             :in [?a ?b]
+             :where [[?transaction :transaction/item ?x]
+                     [?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?b]]
+             :args [101 "Starbucks"]}
+           (dtl/apply-criteria query
+                               {:transaction-item/account {:id 101}
+                                :transaction/description "Starbucks"}
+                               {:target :transaction-item
+                                :relationships #{[:transaction-item :transaction :item]}})))))
 
 (deftest apply-options
   (testing "limit"
