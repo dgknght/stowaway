@@ -5,6 +5,7 @@
             [clojure.set :refer [difference]]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
+            [honey.sql.pg-ops :as ops]
             [stowaway.util :refer [key-join]]
             [stowaway.graph :as g]
             [stowaway.core :as stow]
@@ -22,14 +23,17 @@
 (def apply-limit sql/apply-limit)
 (def apply-offset sql/apply-offset)
 (def select-count sql/select-count)
-(def delimit sql/delimit)
 
-(defn- postgres-array
-  [values]
-  (format "'{%s}'"
-          (->> values
-               (map delimit)
-               (str/join ","))))
+(defn- pg-array
+  [[v :as vs] type]
+  (cond-> [:array
+           (cond
+             (keyword? v)
+             (mapv name vs)
+
+             :else
+             (vec vs))]
+    type (conj type)))
 
 (def ^:private split-kw (juxt namespace name))
 
@@ -171,7 +175,7 @@
     [[:= v1 [:any k]]]
 
     :&&
-    [[oper (postgres-array v1) k]]
+    [['&& (-> v1 seq (pg-array v2)) k]]
 
     :including
     [[:in (keyword (namespace k) "id")
