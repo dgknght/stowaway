@@ -268,9 +268,22 @@
                                [[:id :owner-id]
                                 ["user" :owner-type]]}}))))
 
+; I actually prefer to use sets instead of vectors for the values,
+; but that makes the order unpredicatable and unsuitable for tests
 (deftest apply-criteria-to-array-field
-  (is (= ["SELECT order.* FROM order WHERE ? && order.tags" "'{\"rush\",\"preferred\"}'"]
-         (sql/->query {:order/tags [:&& #{:rush :preferred}]}))))
+  (testing "text data type"
+    (is (= ["SELECT order.* FROM order WHERE ARRAY[?, ?]::TEXT[] && order.tags" "rush" "preferred"]
+           (sql/->query {:order/tags [:&& [:rush :preferred] :text]}))
+        "Keywords are converted to text")
+    (is (= ["SELECT order.* FROM order WHERE ARRAY[?, ?]::TEXT[] && order.tags" "rush" "preferred"]
+           (sql/->query {:order/tags [:&& ["rush" "preferred"] :text]}))
+        "Strings are used as-is"))
+  (testing "varchar data type"
+    (is (= ["SELECT order.* FROM order WHERE ARRAY[?, ?] && order.tags" "rush" "preferred"]
+           (sql/->query {:order/tags [:&& [:rush :preferred]]}))))
+  (testing "int data type"
+    (is (= ["SELECT order.* FROM order WHERE ARRAY[?, ?] && order.tags" 100 200]
+           (sql/->query {:order/tags [:&& [100 200]]})))))
 
 (deftest specify-an-outer-join
   (is (= [(string/join
