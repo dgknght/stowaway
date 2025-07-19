@@ -34,6 +34,7 @@
                     :in                 :inclusion
                     :including          :including
                     :including-match    :entity-match
+                    :&&                 :&&
                     (:between
                      :<between
                      :between>
@@ -204,6 +205,9 @@
           (:and :or)
           :conjunction
 
+          :&&
+          :&&
+
           nil)))))
 
 (defmethod criterion->inputs :default
@@ -229,6 +233,10 @@
   (map (fn [[_ v]]
          [k v])
        criterions))
+
+(defmethod criterion->inputs :&&
+  [[k [_oper vs]]]
+  [[k vs]])
 
 (defmulti ^:private extract-inputs* type-dispatch)
 
@@ -366,6 +374,13 @@
 (defmethod criterion->where :including
   [[k [_ match]] {:keys [entity-ref inputs-map]}]
   [[entity-ref k (get-in inputs-map [k match])]])
+
+; TODO: Confirm this is different from :inclusion
+(defmethod criterion->where :&&
+  [[k [_ vs]] {:keys [entity-ref inputs-map] :as opts}]
+  (let [a (attr-ref k opts)]
+    [[entity-ref k a]
+     [(list 'contains? (get-in inputs-map [k vs]) a)]]))
 
 (defmulti ^:private criteria->where type-dispatch)
 

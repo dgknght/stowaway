@@ -538,3 +538,13 @@
               :transaction/memo]
              {:relationships #{[:transaction :transaction-item]}}))
         "Multiple additional select columns can be specified")))
+
+(deftest apply-criteria-to-array-field
+  (is (= '{:find [?x]
+           :where [[?x :order/tags ?tags]
+                   [(contains? ?a ?tags)]]
+           :in [?a]
+           :args [#{:rush :preferred}]}
+         (dtl/apply-criteria
+           query
+           {:order/tags [:&& #{:rush :preferred} :text]}))))
