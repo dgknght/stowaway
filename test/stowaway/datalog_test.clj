@@ -250,24 +250,43 @@
 
 ; Common criteria 12: recursion
 (deftest query-with-recursion
-  (is (= '{:find [?x]
-           :where [(match-and-recurse ?x ?a ?b)]
-           :in [$ % ?a ?b]
-           :args [::db ; this is a placeholder for the db in this test
-                  [[(match-and-recurse ?x ?a ?b)
-                    [?x :account/name ?a]
-                    [?x :account/type ?b]]
-                   [(match-and-recurse ?x1 ?a ?b)
-                    [?x1 :account/parent ?x2]
-                    (match-and-recurse ?x2 ?a ?b)]]
-                  "Checking"
-                  :asset]}
-         (dtl/apply-criteria (assoc query
-                                    :in ['$]
-                                    :args [::db])
-                             {:account/name "Checking"
-                              :account/type :asset}
-                             {:recursion [:account/parent]}))))
+  (testing "Filter by non-id attributes"
+    (is (= '{:find [?x]
+             :where [(match-and-recurse ?x ?a ?b)]
+             :in [$ % ?a ?b]
+             :args [::db ; this is a placeholder for the db in this test
+                    [[(match-and-recurse ?x ?a ?b)
+                      [?x :account/name ?a]
+                      [?x :account/type ?b]]
+                     [(match-and-recurse ?x1 ?a ?b)
+                      [?x1 :account/parent ?x2]
+                      (match-and-recurse ?x2 ?a ?b)]]
+                    "Checking"
+                    :asset]}
+           (dtl/apply-criteria (assoc query
+                                      :in ['$]
+                                      :args [::db])
+                               {:account/name "Checking"
+                                :account/type :asset}
+                               {:recursion [:account/parent]}))))
+  (testing "Filter by id"
+    (is (= '{:find [?x]
+             :where [[?x :account/name ?account-name]
+                     (match-and-recurse ?x ?id)]
+             :in [$ % ?id]
+             :args [::db
+                    [[(match-and-recurse ?x ?target)
+                      [(= ?x ?target)]]
+                     [(match-and-recurse ?x1 ?target)
+                      [?x1 :account/parent ?x2]
+                      (match-and-recurse ?x2 ?target)]]
+                    101]}
+           (dtl/apply-criteria '{:find [?x]
+                                 :where [[?x :account/name ?account-name]]
+                                 :in [$]
+                                 :args [::db]}
+                               {:id 101}
+                               {:recursion [:account/parent]})))))
 
 ; Common criteria 13: inclusion in a list
 (deftest query-against-inclusion-in-a-list
@@ -354,7 +373,7 @@
                                 :relationships #{[:user :entity]
                                                  [:entity :commodity]}
                                 :graph-apex :user}))))
-  (testing "target has not direct criterion"
+  (testing "target has no direct criterion"
     (is (= '{:find [?x]
              :where [[?commodity :commodity/entity ?a]
                      [?x :price/commodity ?commodity]]
@@ -395,6 +414,32 @@
                              {:target :transaction
                               :relationships #{[:transaction :transaction-item]}}))))
 
+(deftest join-against-cardinality-many
+  (testing "implicit attribute name"
+    (is (= '{:find [?x]
+             :in [?a ?b]
+             :where [[?transaction :transaction/transaction-item ?x]
+                     [?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?b]]
+             :args [101 "Starbucks"]}
+           (dtl/apply-criteria query
+                               {:transaction-item/account {:id 101}
+                                :transaction/description "Starbucks"}
+                               {:target :transaction-item
+                                :relationships #{[:transaction-item :transaction]}}))))
+  (testing "explicit attribute name"
+    (is (= '{:find [?x]
+             :in [?a ?b]
+             :where [[?transaction :transaction/item ?x]
+                     [?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?b]]
+             :args [101 "Starbucks"]}
+           (dtl/apply-criteria query
+                               {:transaction-item/account {:id 101}
+                                :transaction/description "Starbucks"}
+                               {:target :transaction-item
+                                :relationships #{[:transaction-item :transaction :item]}})))))
+
 (deftest apply-options
   (testing "limit"
     (is (= '{:find [?x]
@@ -423,3 +468,99 @@
            (dtl/apply-options query
                               {:order-by [:shirt/size [:shirt/weight :desc]]}))
         "Multiple fields are handled appropriately")))
+
+(deftest specify-select-clause
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?quantity]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/quantity ?quantity]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction-item/quantity
+             {:replace true}))
+        "The entire select clause can be specified as an attribute")
+    (is (= '{:find [?x]
+             :where [[?x :transaction-item/account ?a]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :id
+             {:replace true}))
+        "The select clause can reference the entity/id")
+    (is (= '{:find [?my-entity]
+             :where [[?my-entity :transaction-item/account ?a]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             (assoc q :where '[[?my-entity :transaction-item/account ?a]])
+             :id
+             {:replace true
+              :entity-ref '?my-entity}))
+        "The select clause can reference the id with a custom entity reference")
+    (is (= '{:find [?quantity ?value]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/quantity ?quantity]
+                     [?x :transaction-item/value ?value]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             [:transaction-item/quantity
+              :transaction-item/value]
+             {:replace true}))
+        "The entire select clause can be specified as a list of attributes")
+    (is (= '{:find [?x ?transaction-date]
+             :where [[?x :transaction-item/account ?a]
+                     [?transaction :transaction/transaction-date ?transaction-date]
+                     [?x :transaction-item/transaction ?transaction]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/transaction-date
+             {:relationships #{[:transaction :transaction-item]}}))
+        "An additional select column can be specified from another model")
+    (is (= '{:find [?x ?description ?memo]
+             :where [[?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?description]
+                     [?transaction :transaction/memo ?memo]
+                     [?x :transaction-item/transaction ?transaction]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             [:transaction/description
+              :transaction/memo]
+             {:relationships #{[:transaction :transaction-item]}}))
+        "Multiple additional select columns can be specified")))
+
+(deftest apply-criteria-to-array-field
+  (is (= '{:find [?x]
+           :where [[?x :order/tags ?tags]
+                   [(contains? ?a ?tags)]]
+           :in [?a]
+           :args [#{:rush :preferred}]}
+         (dtl/apply-criteria
+           query
+           {:order/tags [:&& #{:rush :preferred} :text]}))))
+
+(deftest criteria-join-on-direct-model-ref
+  (is (= '{:find [?x]
+           :where [[?x :transaction-item/account ?a]
+                   [?transaction :transaction/items ?x]
+                   [?transaction :transaction/transaction-date ?transaction-date]
+                   [201 :reconciliation/items ?x]
+                   [(>= ?transaction-date ?b)]
+                   [(<= ?transaction-date ?c)]]
+           :in [?a ?b ?c ?d]
+           :args [101 "2017-01-01" "2017-01-10" 201]}
+         (dtl/apply-criteria
+           query
+           {:transaction-item/account {:id 101},
+            :transaction/transaction-date [:between "2017-01-01" "2017-01-10"],
+            :reconciliation/id {:id 201}}))))
