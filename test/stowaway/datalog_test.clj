@@ -551,10 +551,10 @@
 
 (deftest criteria-join-on-direct-model-ref
   (is (= '{:find [?x]
-           :where [[?x :transaction-item/account ?a]
+           :where [[?d :reconciliation/items ?x]
                    [?transaction :transaction/items ?x]
+                   [?x :transaction-item/account ?a]
                    [?transaction :transaction/transaction-date ?transaction-date]
-                   [201 :reconciliation/items ?x]
                    [(>= ?transaction-date ?b)]
                    [(<= ?transaction-date ?c)]]
            :in [?a ?b ?c ?d]
@@ -563,4 +563,8 @@
            query
            {:transaction-item/account {:id 101},
             :transaction/transaction-date [:between "2017-01-01" "2017-01-10"],
-            :reconciliation/id {:id 201}}))))
+            :reconciliation/_self {:id 201}}
+           {:target :transaction-item
+            :relationships #{[:transaction-item :reconciliation :items]
+                             [:transaction-item :transaction :items]
+                             [:account :transaction-item]}}))))

@@ -69,7 +69,7 @@
   "Given a graph edge (connection between two namespaces), a source
   namespace, and a set of relationships, return a where clause that
   joins the two namespaces."
-  [edge source relationships]
+  [edge {:keys [source relationships inputs-map]}]
   (let [rels (->> relationships
                   (map (fn [[k v]]
                          [#{k v}
@@ -81,15 +81,25 @@
                      (map (fn [[k v a]]
                             [#{k v} a]))
                      (into {}))
-        [parent child] (rels rel-key)
-        entity-ref (if (= source child)
-                     '?x
-                     (symbol (format "?%s" (name child))))
+        [parent child :as directed] (rels rel-key)
+        ; When one side of this join or the other is passed in as an 
+        ; input, like {:some-model/_self {:id 100}} we can use that
+        ; reference directly instead of creating a new var to hold
+        ; the reference.
+        [p-self c-self] (mapv #(get-in inputs-map
+                                       [(keyword (name %)
+                                                "_self")])
+                              directed)
+        entity-ref (cond
+                     (= source child) '?x
+                     c-self (first (vals c-self))
+                     :else (symbol (format "?%s" (name child))))
         attr (keyword (name child)
                       (name (aliases rel-key parent)))
-        other-entity-ref (if (= source parent)
-                           '?x
-                           (symbol (format "?%s" (name parent))))]
+        other-entity-ref (cond
+                           (= source parent) '?x
+                           p-self (first (vals p-self))
+                           :else (symbol (format "?%s" (name parent))))]
     [entity-ref
      attr
      other-entity-ref]))
@@ -97,10 +107,10 @@
 (defn- path->join-clauses
   "Given a path that maps connections between namespaces, return a list
   of where clauses that join the namespaces."
-  [path source relationships]
+  [path ctx]
   (->> path
        (partition 2 1)
-       (map #(edge->join-clause % source relationships))))
+       (map #(edge->join-clause % ctx))))
 
 (defn- extract-joining-clauses
   [namespaces {:as ctx :keys [target graph relationships]}]
@@ -123,7 +133,7 @@
                            :targets targets
                            :relationships relationships})))
 
-        (mapcat #(path->join-clauses % source relationships)
+        (mapcat #(path->join-clauses % (assoc ctx :source source))
                 paths)))))
 
 (defn- extract-joining-clauses-from-criteria
@@ -307,9 +317,13 @@
   ; We don't want to do that, though, if the attribute has been remapped
   ; the remap is written by the caller and doesn't know about our special
   ; handling for :id
+
+  ; :_self also gets special handling, as the input can be referenced directly
+  ; in the where clause
   (let [orig-k (if (= ::id k) :id k)
         attr (get-in remap [orig-k] orig-k)]
-    (when (not= :id attr)
+    (when (and (not= :id attr)
+               (not= "_self" (name attr)))
       [(if v
          [(criterion-e k opts)
           attr
