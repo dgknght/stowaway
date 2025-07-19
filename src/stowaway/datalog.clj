@@ -82,7 +82,7 @@
                             [#{k v} a]))
                      (into {}))
         [parent child :as directed] (rels rel-key)
-        ; When one side of this join or the other is passed in as an 
+        ; When one side of this join or the other is passed in as an
         ; input, like {:some-model/_self {:id 100}} we can use that
         ; reference directly instead of creating a new var to hold
         ; the reference.

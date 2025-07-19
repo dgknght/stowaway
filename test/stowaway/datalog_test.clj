@@ -549,6 +549,8 @@
            query
            {:order/tags [:&& #{:rush :preferred} :text]}))))
 
+; NB I decided to invert this relationship, so this feature is not
+; current in use
 (deftest criteria-join-on-direct-model-ref
   (is (= '{:find [?x]
            :where [[?d :reconciliation/items ?x]
