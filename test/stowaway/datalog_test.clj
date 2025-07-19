@@ -548,3 +548,19 @@
          (dtl/apply-criteria
            query
            {:order/tags [:&& #{:rush :preferred} :text]}))))
+
+(deftest criteria-join-on-direct-model-ref
+  (is (= '{:find [?x]
+           :where [[?x :transaction-item/account ?a]
+                   [?transaction :transaction/items ?x]
+                   [?transaction :transaction/transaction-date ?transaction-date]
+                   [201 :reconciliation/items ?x]
+                   [(>= ?transaction-date ?b)]
+                   [(<= ?transaction-date ?c)]]
+           :in [?a ?b ?c ?d]
+           :args [101 "2017-01-01" "2017-01-10" 201]}
+         (dtl/apply-criteria
+           query
+           {:transaction-item/account {:id 101},
+            :transaction/transaction-date [:between "2017-01-01" "2017-01-10"],
+            :reconciliation/id {:id 201}}))))
