@@ -301,30 +301,30 @@
 ; Common criteria 13: supply replacements for nil values
 (deftest query-with-nil-replacements
   (is (= '{:find [?x]
-           :where [[(get-else $ ?x :account/closing-date ?a) ?b]]
+           :where [[(get-else $ ?x :account/closing-date ?b) ?a]]
            :in [?a ?b]
-           :args ["9999-12-31" "2020-01-01"]}
+           :args ["2020-01-01" "9999-12-31"]}
          (dtl/apply-criteria query
                              {:account/closing-date "2020-01-01"}
-                             {:nil-replacements {:account/closing-date "9999-12-31"}})
-         "An implicit equals is applied to a nil replacement"))
+                             {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "An implicit equals is applied to a nil replacement")
   (is (= '{:find [?x]
-           :where [[(get-else $ ?x :account/closing-date ?a) ?b]]
+           :where [[(get-else $ ?x :account/closing-date ?b) ?a]]
            :in [?a ?b]
-           :args ["9999-12-31" "2020-01-01"]}
+           :args ["2020-01-01" "9999-12-31"]}
          (dtl/apply-criteria query
                              {:account/closing-date [:= "2020-01-01"]}
-                             {:nil-replacements {:account/closing-date "9999-12-31"}})
-         "An explicit equals is applied to a nil replacement"))
+                             {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "An explicit equals is applied to a nil replacement")
   (is (= '{:find [?x]
-           :where [[(get-else $ ?x :account/closing-date ?a) ?closing-date]
-                   [(<= ?closing-date ?b)]]
+           :where [[(get-else $ ?x :account/closing-date ?b) ?closing-date]
+                   [(<= ?closing-date ?a)]]
            :in [?a ?b]
-           :args ["9999-12-31" "2020-01-01"]}
+           :args ["2020-01-01" "9999-12-31"]}
          (dtl/apply-criteria query
                              {:account/closing-date [:<= "2020-01-01"]}
-                             {:nil-replacements {:account/closing-date "9999-12-31"}})
-         "An explicit equals is applied to a nil replacement")))
+                             {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "An explicit equals is applied to a nil replacement"))
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]

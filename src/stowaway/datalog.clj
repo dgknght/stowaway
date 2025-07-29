@@ -400,10 +400,10 @@
 (defmulti ^:private criteria->where type-dispatch)
 
 (defn- replace-nil
-  [{:keys [nil-replacements]}]
+  [{:keys [nil-replacements inputs-map]}]
   (fn [[e a v :as clause]]
     (if-let [rep (nil-replacements a)]
-      [(list 'get-else '$ e a rep) v]
+      [(list 'get-else '$ e a (get-in inputs-map [a rep])) v]
       clause)))
 
 (defmethod criteria->where ::stow/map
