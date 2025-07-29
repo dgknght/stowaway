@@ -277,14 +277,15 @@
       (nth vals (swap! index inc)))))
 
 (defn- extract-inputs
-  [{:keys [criteria] :as ctx}]
-  (extract-inputs* criteria
-                   (assoc ctx
-                          :next-ident (dispense (map (comp symbol
-                                                           #(str "?" %)
-                                                           name)
-                                                     [:a :b :c :d :e :f :g :h :i]))
-                          :existing {})))
+  [{:keys [criteria nil-replacements] :as ctx}]
+  (let [next-ident (dispense (map (comp symbol
+                                        #(str "?" %)
+                                        name)
+                                  [:a :b :c :d :e :f :g :h :i]))]
+    (extract-inputs* [:_ criteria nil-replacements]
+                     (assoc ctx
+                            :next-ident next-ident
+                            :existing {}))))
 
 (defn- input-map->lists
   [m]
@@ -398,9 +399,19 @@
 
 (defmulti ^:private criteria->where type-dispatch)
 
+(defn- replace-nil
+  [{:keys [nil-replacements]}]
+  (fn [[e a v :as clause]]
+    (if-let [rep (nil-replacements a)]
+      [(list 'get-else '$ e a rep) v]
+      clause)))
+
 (defmethod criteria->where ::stow/map
   [criteria opts]
-  (vec (mapcat #(criterion->where % opts) criteria)))
+  (->> criteria
+       (mapcat #(criterion->where % opts))
+       (map (replace-nil opts))
+       vec))
 
 (defmethod criteria->where ::stow/vector
   [[conj & cs :as criteria] opts]
@@ -451,7 +462,8 @@
 
 (def ^:private default-apply-criteria-options
   {:entity-ref '?x
-   :remap {}})
+   :remap {}
+   :nil-replacements {}})
 
 (defn- strip-redundant-and
   [where]
