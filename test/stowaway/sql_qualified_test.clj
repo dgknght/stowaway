@@ -381,6 +381,27 @@
          (sql/->query {:account/name "Checking"}
                       {:recursion [:parent-id :id]}))))
 
+; Common criteria 13: supply replacements for nil values
+(deftest query-with-nil-replacements
+  (is (= ["SELECT account.* FROM account WHERE COALESCE(account.closing_date, ?) = ?"
+          "9999-12-31"
+          "2020-01-01"]
+         (sql/->query {:account/closing-date "2020-01-01"}
+                      {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "A implicit equals operator is applied to the nil replacement")
+  (is (= ["SELECT account.* FROM account WHERE COALESCE(account.closing_date, ?) = ?"
+          "9999-12-31"
+          "2020-01-01"]
+         (sql/->query {:account/closing-date [:= "2020-01-01"]}
+                      {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "A explicit equals operator is applied to the nil replacement")
+  (is (= ["SELECT account.* FROM account WHERE COALESCE(account.closing_date, ?) >= ?"
+          "9999-12-31"
+          "2020-01-01"]
+         (sql/->query {:account/closing-date [:>= "2020-01-01"]}
+                      {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "A comparative operator is applied to the nil replacement"))
+
 (deftest handle-keyword-values
   (is (= ["SELECT user.* FROM user WHERE user.first_name = ?", "Jane"]
          (sql/->query {:user/first-name :Jane}))
