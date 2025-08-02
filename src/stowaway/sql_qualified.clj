@@ -1,11 +1,9 @@
 (ns stowaway.sql-qualified
-  (:require [clojure.string :as str]
-            [clojure.pprint :refer [pprint]]
+  (:require [clojure.pprint :refer [pprint]]
             [clojure.spec.alpha :as s]
             [clojure.set :refer [difference]]
             [honey.sql.helpers :as h]
             [honey.sql :as hsql]
-            [honey.sql.pg-ops :as ops]
             [stowaway.util :refer [key-join]]
             [stowaway.graph :as g]
             [stowaway.core :as stow]
@@ -114,9 +112,15 @@
       ::subquery
       (type v))))
 
+(defn- replace-nil
+  [k {:keys [nil-replacements]}]
+  (if-let [rep (nil-replacements k)]
+    [:coalesce k rep]
+    k))
+
 (defmethod map-entry->statements :default
-  [[k v] _opts]
-  [[:= k v]])
+  [[k v] opts]
+  [[:= (replace-nil k opts) v]])
 
 (declare ->query)
 
@@ -133,61 +137,62 @@
 ; column reference. Otherwise, assume it's a value and should
 ; be converted to a string
 (defmethod map-entry->statements ::stow/keyword
-  [[k v] _opts]
-  [[:= k (naked-kw->string v) ]])
+  [[k v] opts]
+  [[:= (replace-nil k opts) (naked-kw->string v)]])
 
 (defmethod map-entry->statements ::stow/vector
-  [[k [oper & [v1 v2 :as values]]] {:keys [table-fn] :or {table-fn identity} :as opts}]
-  (case oper
+  [[raw-k [oper & [v1 v2 :as values]]] {:keys [table-fn] :or {table-fn identity} :as opts}]
+  (let [k (replace-nil raw-k opts)]
+    (case oper
 
-    (:= :> :>= :<= :< :<> :!= :like)
-    [[oper k v1]]
+      (:= :> :>= :<= :< :<> :!= :like)
+      [[oper k v1]]
 
-    :between
-    [[:>= k v1]
-     [:<= k v2]]
+      :between
+      [[:>= k v1]
+       [:<= k v2]]
 
-    :between>
-    [[:>= k v1]
-     [:< k v2]]
+      :between>
+      [[:>= k v1]
+       [:< k v2]]
 
-    :<between
-    [[:> k v1]
-     [:<= k v2]]
+      :<between
+      [[:> k v1]
+       [:<= k v2]]
 
-    :<between>
-    [[:> k v1]
-     [:< k v2]]
+      :<between>
+      [[:> k v1]
+       [:< k v2]]
 
-    :in
-    [(apply vector :in k (map naked-kw->string values))]
+      :in
+      [(apply vector :in k (map naked-kw->string values))]
 
-    (:and :or)
-    [(apply vector oper (->> values
-                             (interleave (repeat k))
-                             (partition 2)
-                             (mapcat #(map-entry->statements % opts))))]
+      (:and :or)
+      [(apply vector oper (->> values
+                               (interleave (repeat k))
+                               (partition 2)
+                               (mapcat #(map-entry->statements % opts))))]
 
-    :contained-by
-    [[(keyword "@>") v1 k]]
+      :contained-by
+      [[(keyword "@>") v1 k]]
 
-    :any
-    [[:= v1 [:any k]]]
+      :any
+      [[:= v1 [:any k]]]
 
-    :&&
-    [['&& (-> v1 seq (pg-array v2)) k]]
+      :&&
+      [['&& (-> v1 seq (pg-array v2)) k]]
 
-    :including
-    [[:in (keyword (namespace k) "id")
-      (assoc (->query v1 {:skip-format? true})
-             :select [(keyword (table-fn (single-ns v1))
-                               (str (namespace k) "_id"))])]]
+      :including
+      [[:in (keyword (namespace k) "id")
+        (assoc (->query v1 {:skip-format? true})
+               :select [(keyword (table-fn (single-ns v1))
+                                 (str (namespace k) "_id"))])]]
 
-    [(apply vector :in k values)]))
+      [(apply vector :in k values)])))
 
 (defmethod map-entry->statements ::subquery
-  [[k [_ [criteria opts]]] _opts]
-  [[:in k (->query criteria (assoc opts :skip-format? true))]])
+  [[k [_ [criteria opts]]] options]
+  [[:in (replace-nil k options) (->query criteria (assoc opts :skip-format? true))]])
 
 (defmulti ^:private ->clauses
   (fn [criteria _opts]
@@ -412,12 +417,6 @@
   [opts]
   (assoc opts :model->table (model->table* opts)))
 
-(defn- ensure-fns
-  [opts]
-  (-> opts
-      (update-in [:column-fn] (fnil identity identity))
-      (update-in [:table-fn] (fnil identity identity))))
-
 (defn- +table
   [{:as opts :keys [target model->table]}]
   (assoc opts :table (model->table target)))
@@ -429,11 +428,16 @@
                    (throw (IllegalArgumentException. "Unable to determine the query target")))]
     (assoc opts :target target)))
 
+(def default-options
+  {:column-fn identity
+   :table-fn identity
+   :nil-replacements {}})
+
 (defn- refine-opts
   [opts infered-ns]
-  (-> opts
+  (-> default-options
+      (merge opts)
       (ensure-target infered-ns)
-      ensure-fns
       +model->table
       +table))
 
@@ -466,13 +470,13 @@
     sql))
 
 (defn ->update
-  [changes criteria & options]
+  [changes criteria & {:as options}]
   (let [{:keys [table target model->table]
          :as opts} (refine-opts options
                                 (-> changes single-ns keyword))
         joins (->joins criteria
                        (-> opts
-                           (assoc :aliases {target :x})
+                           (assoc-in [:aliases target] :x)
                            (update-in [:full-results]
                                       (fn [models]
                                         (->> models

@@ -336,7 +336,7 @@
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select :transaction-item/quantity}))
-      "The entire select clause can be specified")
+      "The entire select clause can be specified as a single attribute")
   (is (= ["SELECT id FROM transaction_item WHERE transaction_item.reconciliation_id = ?"
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
@@ -347,7 +347,7 @@
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select [:transaction-item/quantity
                                 :transaction-item/value]}))
-      "The entire select clause can be specified")
+      "The entire select clause can be specified as a list of attributes")
   (is (= ["SELECT transaction_item.*, transaction.description FROM transaction_item INNER JOIN transaction ON transaction.id = transaction_item.transaction_id WHERE transaction_item.reconciliation_id = ?"
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
@@ -380,6 +380,27 @@
           "Checking"]
          (sql/->query {:account/name "Checking"}
                       {:recursion [:parent-id :id]}))))
+
+; Common criteria 13: supply replacements for nil values
+(deftest query-with-nil-replacements
+  (is (= ["SELECT account.* FROM account WHERE COALESCE(account.closing_date, ?) = ?"
+          "9999-12-31"
+          "2020-01-01"]
+         (sql/->query {:account/closing-date "2020-01-01"}
+                      {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "A implicit equals operator is applied to the nil replacement")
+  (is (= ["SELECT account.* FROM account WHERE COALESCE(account.closing_date, ?) = ?"
+          "9999-12-31"
+          "2020-01-01"]
+         (sql/->query {:account/closing-date [:= "2020-01-01"]}
+                      {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "A explicit equals operator is applied to the nil replacement")
+  (is (= ["SELECT account.* FROM account WHERE COALESCE(account.closing_date, ?) >= ?"
+          "9999-12-31"
+          "2020-01-01"]
+         (sql/->query {:account/closing-date [:>= "2020-01-01"]}
+                      {:nil-replacements {:account/closing-date "9999-12-31"}}))
+      "A comparative operator is applied to the nil replacement"))
 
 (deftest handle-keyword-values
   (is (= ["SELECT user.* FROM user WHERE user.first_name = ?", "Jane"]
