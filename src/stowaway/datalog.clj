@@ -480,7 +480,7 @@
   [where {:keys [entity-ref] :or {entity-ref '?x}}]
   (->> where
        (filter #(= entity-ref (first %)))
-       (map #(-> % second namespace))
+       (map #(-> % second namespace keyword))
        first))
 
 (defn- infer-target
