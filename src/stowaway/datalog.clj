@@ -463,7 +463,7 @@
              #(prewalk (fn [c] (normalize-criterion c ctx))
                        %)))
 
-(def ^:private default-apply-criteria-options
+(def ^:private default-options
   {:entity-ref '?x
    :remap {}
    :nil-replacements {}})
@@ -573,7 +573,7 @@
   [query criteria & [options]]
   {:pre [(s/valid? ::c/criteria criteria)
          (s/valid? (s/nilable ::options) options)]}
-  (-> default-apply-criteria-options
+  (-> default-options
       (merge options
              {:query query
               :criteria criteria})
