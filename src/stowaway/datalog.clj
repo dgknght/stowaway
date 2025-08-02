@@ -7,7 +7,7 @@
             [ubergraph.alg :refer [shortest-path
                                    nodes-in-path]]
             [stowaway.core :as stow]
-            [stowaway.util :refer [type-dispatch]]
+            [stowaway.util :as util]
             [stowaway.inflection :refer [singular]]
             [stowaway.criteria :as c]
             [stowaway.graph :as g]))
@@ -248,7 +248,7 @@
   [[k [_oper vs]]]
   [[k vs]])
 
-(defmulti ^:private extract-inputs* type-dispatch)
+(defmulti ^:private extract-inputs* util/type-dispatch)
 
 ; e.g. {:first-name "John"}
 (defmethod extract-inputs* ::stow/map
@@ -397,7 +397,7 @@
     [[entity-ref k a]
      [(list 'contains? (get-in inputs-map [k vs]) a)]]))
 
-(defmulti ^:private criteria->where type-dispatch)
+(defmulti ^:private criteria->where util/type-dispatch)
 
 (defn- replace-nil
   "Given a map of options that includes :inputs-map and :nil-replacements,
