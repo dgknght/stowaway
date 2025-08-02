@@ -610,12 +610,13 @@
              concat
              (->> select
                   (remove #(= :id %))
-                  (map #(let [n (namespace %)]
-                          (vector (if (= target n)
-                                    entity-ref
-                                    (symbol (str "?" n)))
-                                  %
-                                  (attr-ref % ctx)))))
+                  (map (comp (replace-nil ctx)
+                             #(let [n (namespace %)]
+                                (vector (if (= target (keyword n))
+                                          entity-ref
+                                          (symbol (str "?" n)))
+                                        %
+                                        (attr-ref % ctx))))))
              (extract-joining-clauses-from-attributes select ctx)))
 
 (s/def ::select (s/or :scalar keyword?
