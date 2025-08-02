@@ -1,6 +1,7 @@
 (ns stowaway.util
   (:require [clojure.walk :refer [prewalk]]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.pprint :refer [pprint]]))
 
 (defn- deep-contains?
   [m [k & ks]]
@@ -71,3 +72,13 @@
 (defn type-dispatch
   [x & _]
   (type x))
+
+(defn pp->
+  [v m]
+  (pprint {m v})
+  v)
+
+(defn pp->>
+  [m v]
+  (pprint {m v})
+  v)
