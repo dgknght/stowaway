@@ -324,7 +324,16 @@
          (dtl/apply-criteria query
                              {:account/closing-date [:<= "2020-01-01"]}
                              {:nil-replacements {:account/closing-date "9999-12-31"}}))
-      "An explicit equals is applied to a nil replacement"))
+      "An explicit equals is applied to a nil replacement")
+  (is (= '{:find [?x ?closing-date]
+           :where [[(get-else $ ?x :account/closing-date ?a) ?closing-date]]
+           :in [?a]
+           :args [:never]}
+         (dtl/apply-select query
+                           :account/closing-date
+                           {:target :account
+                            :nil-replacements {:account/closing-date :never}}))
+      "A nil replacement is applied to a select-also value"))
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
