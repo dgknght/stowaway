@@ -619,6 +619,15 @@
                                         (attr-ref % ctx))))))
              (extract-joining-clauses-from-attributes select ctx)))
 
+(defn- apply-select-to-args
+  [{:as ctx :keys [select nil-replacements]}]
+  (if-let [replaced (select-keys nil-replacements select)]
+
+    ; TODO: Finish implementing this
+    (do (pprint {::replaced replaced}) ctx)
+
+    ctx))
+
 (s/def ::select (s/or :scalar keyword?
                       :vector (s/coll-of keyword?)))
 
@@ -639,6 +648,7 @@
       calculate-graph
       apply-select-to-find
       apply-select-to-where
+      apply-select-to-args
       :query))
 
 (defn- ensure-attr
