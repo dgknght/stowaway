@@ -622,14 +622,28 @@
                                         (attr-ref % ctx))))))
              (extract-joining-clauses-from-attributes select ctx)))
 
+(defn- extract-select-inputs
+  [{:keys [select nil-replacements] :as ctx}]
+  ; TODO: Adjust this to account for existing vars
+  (let [inputs-map (->> '[?a ?b ?c ?d ?e ?f ?g ?h ?i]
+                        (interleave (select-keys nil-replacements select))
+                        (partition 2)
+                        (reduce (fn [m [k v]]
+                                 (assoc-in m k v))
+                                {}))
+        [inputs args] (input-map->lists inputs-map)]
+    (assoc ctx
+           :inputs-map inputs-map
+           :inputs inputs
+           :args args)))
+
 (defn- apply-select-to-args
-  [{:as ctx :keys [select nil-replacements]}]
-  (if-let [replaced (select-keys nil-replacements select)]
+  [{:as ctx :keys [args]}]
+  (update-in ctx [:query :args] (fnil concat []) args))
 
-    ; TODO: Finish implementing this
-    (do (pprint {::replaced replaced}) ctx)
-
-    ctx))
+(defn- apply-select-to-in
+  [{:as ctx :keys [inputs]}]
+  (update-in ctx [:query :in] (fnil concat []) inputs))
 
 (s/def ::select (s/or :scalar keyword?
                       :vector (s/coll-of keyword?)))
@@ -649,8 +663,10 @@
               :select (->vector select)})
       infer-target
       calculate-graph
+      extract-select-inputs
       apply-select-to-find
       apply-select-to-where
+      apply-select-to-in
       apply-select-to-args
       :query))
 
