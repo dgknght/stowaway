@@ -276,12 +276,15 @@
     (fn []
       (nth vals (swap! index inc)))))
 
+(defn- dispense-vars []
+  (dispense (map (comp symbol
+                       #(str "?" %)
+                       name)
+                 [:a :b :c :d :e :f :g :h :i])))
+
 (defn- extract-inputs
   [{:keys [criteria nil-replacements] :as ctx}]
-  (let [next-ident (dispense (map (comp symbol
-                                        #(str "?" %)
-                                        name)
-                                  [:a :b :c :d :e :f :g :h :i]))]
+  (let [next-ident (dispense-vars)]
     (extract-inputs* [:_ criteria nil-replacements]
                      (assoc ctx
                             :next-ident next-ident
