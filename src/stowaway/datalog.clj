@@ -630,8 +630,9 @@
   [query select & [opts]]
   {:pre [(s/valid? ::select select)
          (s/valid? ::select-opts opts)]}
-  (-> opts
-      (merge {:query query
+  (-> default-options
+      (merge opts
+             {:query query
               :select (->vector select)})
       infer-target
       calculate-graph
