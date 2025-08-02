@@ -623,9 +623,9 @@
              (extract-joining-clauses-from-attributes select ctx)))
 
 (defn- extract-select-inputs
-  [{:keys [select nil-replacements] :as ctx}]
-  ; TODO: Adjust this to account for existing vars
+  [{:keys [select nil-replacements query] :as ctx}]
   (let [inputs-map (->> '[?a ?b ?c ?d ?e ?f ?g ?h ?i]
+                        (drop (count (:in query))) ; account for existing inputs
                         (interleave (select-keys nil-replacements select))
                         (partition 2)
                         (reduce (fn [m [k v]]
@@ -654,6 +654,11 @@
                                                  ::entity-ref])))
 
 (defn apply-select
+  "Given a datalog query and one or more attributes to include
+  in the output, return a query with the :find clause adjusted. Additionally
+  if :nil-replacements are specified, adjust the :in and :args clauses. Note
+  that this method allows for existing :in and :args clauses while the
+  apply-criteria function does not, so that function should be applied first."
   [query select & [opts]]
   {:pre [(s/valid? ::select select)
          (s/valid? ::select-opts opts)]}

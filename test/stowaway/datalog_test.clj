@@ -333,7 +333,20 @@
                            :account/closing-date
                            {:target :account
                             :nil-replacements {:account/closing-date :never}}))
-      "A nil replacement is applied to a select-also value"))
+      "A nil replacement is applied to a select value")
+  (is (= '{:find [?x ?closing-date]
+           :where [[?x :account/type ?a]
+                   [(get-else $ ?x :account/closing-date ?b) ?closing-date]]
+           :in [?a ?b]
+           :args [:asset :never]}
+         (dtl/apply-select '{:find [?x]
+                             :in [?a]
+                             :args [:asset]
+                             :where [[?x :account/type ?a]]}
+                           :account/closing-date
+                           {:target :account
+                            :nil-replacements {:account/closing-date :never}}))
+      "A nil replacement is applied to a select value when the query already has inputs"))
 
 (deftest apply-a-remapped-simple-criterion
   (is (= '{:find [?x]
