@@ -400,6 +400,9 @@
 (defmulti ^:private criteria->where type-dispatch)
 
 (defn- replace-nil
+  "Given a map of options that includes :inputs-map and :nil-replacements,
+  return a function that takes a where clause and adjusts it, if necessary,
+  to supply a replacement for nil values in the where clause."
   [{:keys [nil-replacements inputs-map]}]
   (fn [[e a v :as clause]]
     (if-let [rep (nil-replacements a)]
