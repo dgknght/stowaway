@@ -624,8 +624,9 @@
 
 (defn- extract-select-inputs
   [{:keys [select nil-replacements query] :as ctx}]
-  (let [inputs-map (->> '[?a ?b ?c ?d ?e ?f ?g ?h ?i]
-                        (drop (count (:in query))) ; account for existing inputs
+  (let [existing-inputs (-> query :in set)
+        inputs-map (->> '[?a ?b ?c ?d ?e ?f ?g ?h ?i]
+                        (remove existing-inputs)
                         (interleave (select-keys nil-replacements select))
                         (partition 2)
                         (reduce (fn [m [k v]]
