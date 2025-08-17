@@ -337,7 +337,7 @@
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select :transaction-item/quantity}))
       "The entire select clause can be specified as a single attribute")
-  (is (= ["SELECT id FROM transaction_item WHERE transaction_item.reconciliation_id = ?"
+  (is (= ["SELECT transaction_item.id FROM transaction_item WHERE transaction_item.reconciliation_id = ?"
           101]
          (sql/->query {:transaction-item/reconciliation {:id 101}}
                       {:select :id}))
@@ -376,10 +376,18 @@
 ; SELECT raccount.*
 ; FROM raccount
 (deftest query-with-recursion
-  (is (= ["WITH RECURSIVE cte AS (SELECT account.* FROM account WHERE account.name = ? UNION SELECT account.* FROM account INNER JOIN cte ON account.parent_id = cte.id) SELECT cte.* FROM cte"
-          "Checking"]
-         (sql/->query {:account/name "Checking"}
-                      {:recursion [:parent-id :id]}))))
+  (testing "default select, non-id criterion"
+    (is (= ["WITH RECURSIVE cte AS (SELECT account.* FROM account WHERE account.name = ? UNION SELECT account.* FROM account INNER JOIN cte ON account.parent_id = cte.id) SELECT cte.* FROM cte"
+            "Checking"]
+           (sql/->query {:account/name "Checking"}
+                        {:recursion [:parent-id :id]}))))
+  (testing "select just id, id is criterion"
+    (is (= ["WITH RECURSIVE cte AS (SELECT account.id FROM account WHERE account.id = ? UNION SELECT account.id FROM account INNER JOIN cte ON account.parent_id = cte.id) SELECT cte.* FROM cte"
+            101]
+           (sql/->query {:id 101}
+                        {:target :account
+                         :select [:id]
+                         :recursion [:parent-id :id]})))))
 
 ; Common criteria 13: supply replacements for nil values
 (deftest query-with-nil-replacements
