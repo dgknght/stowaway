@@ -94,8 +94,12 @@
            column-fn
            table]}]
   (if select
-    (map (update-keyword table-fn column-fn)
+    (map (comp #(if (= :id %)
+                  (keyword (name table) "id")
+                  %)
+               (update-keyword table-fn column-fn))
          (->seq select))
+
     (cons (keyword (name table) "*")
           (map (update-keyword table-fn column-fn)
                (->seq select-also)))))
