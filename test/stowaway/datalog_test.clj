@@ -393,7 +393,34 @@
            :args ["john@doe.com"]}
          (dtl/apply-criteria '{:find [?x]
                                :where [(not [?x :model/deleted true])]}
-                             {:user/email "john@doe.com"}))))
+                             {:user/email "john@doe.com"}))
+      "An input value match appears before a broad criterion match")
+  (is (= '{:find [?x]
+           :in (?a ?b ?c ?d)
+           :where
+           [[?x :transaction-item/reconciliation ?b]
+            [?x :transaction-item/account ?a]
+            [?transaction :transaction/transaction-date ?transaction-date]
+            [?x :transaction-item/transaction ?transaction]
+            [(>= ?transaction-date ?c)]
+            [(<= ?transaction-date ?d)]]
+           :args [:account
+                  :recon
+                  "2000-01-01"
+                  "2000-01-31"]}
+         (dtl/apply-criteria query
+                             {:transaction-item/account :account
+                              :transaction-item/reconciliation :recon
+                              :transaction/transaction-date [:between "2000-01-01" "2000-01-31"]}
+                             {:target :transaction-item
+                              :graph-apex :user
+                              :relationships #{[:transaction :transaction-item]
+                                               [:entity :transaction]
+                                               [:user :entity]
+                                               [:transaction-item :account]
+                                               [:transaction-item :reconciliation]}
+                              :datalog/hints [:transaction-item/reconciliation
+                                              :transaction-item/account]}))))
 
 (deftest apply-an-intersection-criterion
   (is (= '{:find [?x]

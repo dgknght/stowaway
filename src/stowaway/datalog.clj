@@ -155,7 +155,8 @@
 
 (defn- attr->sortable
   [shortest-path entities]
-  (juxt (comp count
+  (juxt (constantly 999)
+        (comp count
               nodes-in-path
               shortest-path
               keyword
@@ -170,21 +171,15 @@
   extract the attribute at index 1 and return a tuple containing
   the distance from the apex node in the 1st position and either a 1
   (if the attribute is an entity reference) or a 0 in the second."
-  [clause shortest-path entities]
-  (if (or (list? clause) ; TODO: Are both of these really possible?
-          (list? (first clause)))
-    [999 0] ; a list is used for arbitrary predicates like comparisons, etc.
-    (let [f (attr->sortable shortest-path entities)]
-      (-> clause
-          second
-          f))))
-
-(defn- compare-where-clauses
-  [shortest-path entities]
-  (fn [& clauses]
-    (apply compare
-           (map #(clause->sortable % shortest-path entities)
-                clauses))))
+  ([shortest-path entities ctx]
+   #(clause->sortable % shortest-path entities ctx))
+  ([clause shortest-path entities {:datalog/keys [hint-map]}]
+   (if (list? (first clause))
+     [999 0 0] ; a list is used for arbitrary predicates like comparisons, etc.
+     (let [attr (second clause)]
+       (if-let [i (hint-map attr)]
+         [i 0 0]
+         ((attr->sortable shortest-path entities) attr))))))
 
 (defn- sort-where-clauses
   "Given a sequence of where clause, sort the clauses with the aim of putting
@@ -192,11 +187,11 @@
   the relationship hierarchy first."
   [{:keys [relationships graph-apex graph] :as ctx}]
   (let [entities (->> relationships seq flatten set)
-        shortest #(shortest-path graph graph-apex %)]
+        shortest #(shortest-path graph graph-apex %)
+        sorter (clause->sortable shortest entities ctx)]
     (update-in ctx
                [:query :where]
-               #(sort (compare-where-clauses shortest entities)
-                      %))))
+               (partial sort-by sorter))))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
@@ -508,6 +503,15 @@
                :inputs inputs
                :args args))))
 
+(defn- map-hints
+  [{:datalog/keys [hints] :as ctx}]
+  (assoc ctx
+         :datalog/hint-map
+         (->> hints
+              (map-indexed (fn [idx attr]
+                             (vector attr idx)))
+              (into {}))))
+
 (defn- apply-criteria-to-where
   [{:keys [criteria query] :as ctx}]
   (assoc-in ctx
@@ -584,6 +588,7 @@
       calculate-graph
       normalize-criteria
       map-inputs
+      map-hints
       apply-criteria-to-where
       sort-where-clauses
       apply-recursion
