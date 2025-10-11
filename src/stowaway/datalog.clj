@@ -174,8 +174,9 @@
   ([shortest-path entities ctx]
    #(clause->sortable % shortest-path entities ctx))
   ([clause shortest-path entities {:datalog/keys [hint-map]}]
-   (if (list? (first clause))
-     [999 0 0] ; a list is used for arbitrary predicates like comparisons, etc.
+   (if (or (list? clause) ; e.g. (or-join ...)
+           (list? (first clause))) ; e.g. [(>= :user/age 21)]
+     [999 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
      (let [attr (second clause)]
        (if-let [i (hint-map attr)]
          [i 0 0]
