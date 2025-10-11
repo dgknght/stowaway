@@ -155,13 +155,13 @@
 
 (defn- attr->sortable
   [shortest-path entities]
-  (juxt (constantly 999)
-        (comp count
+  (juxt (constantly 999) ; hint position
+        (comp count      ; distance from root position
               nodes-in-path
               shortest-path
               keyword
               namespace)
-        (comp #(if (entities %)
+        (comp #(if (entities %) ; entity assignment position
                  0 1)
               keyword
               name)))
