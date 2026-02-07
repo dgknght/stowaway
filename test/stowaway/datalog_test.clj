@@ -91,9 +91,9 @@
 ; {:user/identities [:including-match {:identity/oauth-provider "google" :identity/oauth-id "abc123"}]}
 (deftest query-against-subquery-criteria
   (is (= '{:find [?x]
-           :where [[?x :user/identities ?identity]
-                   [?identity :identity/oauth-provider ?a]
-                   [?identity :identity/oauth-id ?b]]
+           :where [[?identity :identity/oauth-provider ?a]
+                   [?identity :identity/oauth-id ?b]
+                   [?x :user/identities ?identity]]
            :in [?a ?b]
            :args ["google" "abc123"]}
          (dtl/apply-criteria query
@@ -439,8 +439,8 @@
   (testing "target has direct criterion"
     (is (= '{:find [?x]
              :where [[?x :entity/owner ?a]
-                     [?commodity :commodity/entity ?x]
-                     [?commodity :commodity/symbol ?b]]
+                     [?commodity :commodity/symbol ?b]
+                     [?commodity :commodity/entity ?x]]
              :in [?a ?b]
              :args [101 "USD"]}
            (dtl/apply-criteria query
@@ -495,9 +495,9 @@
   (testing "implicit attribute name"
     (is (= '{:find [?x]
              :in [?a ?b]
-             :where [[?transaction :transaction/transaction-item ?x]
-                     [?x :transaction-item/account ?a]
-                     [?transaction :transaction/description ?b]]
+             :where [[?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?b]
+                     [?transaction :transaction/transaction-item ?x]]
              :args [101 "Starbucks"]}
            (dtl/apply-criteria query
                                {:transaction-item/account {:id 101}
@@ -507,9 +507,9 @@
   (testing "explicit attribute name"
     (is (= '{:find [?x]
              :in [?a ?b]
-             :where [[?transaction :transaction/item ?x]
-                     [?x :transaction-item/account ?a]
-                     [?transaction :transaction/description ?b]]
+             :where [[?x :transaction-item/account ?a]
+                     [?transaction :transaction/description ?b]
+                     [?transaction :transaction/item ?x]]
              :args [101 "Starbucks"]}
            (dtl/apply-criteria query
                                {:transaction-item/account {:id 101}
@@ -593,8 +593,8 @@
         "The entire select clause can be specified as a list of attributes")
     (is (= '{:find [?x ?transaction-date]
              :where [[?x :transaction-item/account ?a]
-                     [?transaction :transaction/transaction-date ?transaction-date]
-                     [?x :transaction-item/transaction ?transaction]]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/transaction-date ?transaction-date]]
              :in [?a]
              :args [101]}
            (dtl/apply-select
@@ -604,9 +604,9 @@
         "An additional select column can be specified from another model")
     (is (= '{:find [?x ?description ?memo]
              :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
                      [?transaction :transaction/description ?description]
-                     [?transaction :transaction/memo ?memo]
-                     [?x :transaction-item/transaction ?transaction]]
+                     [?transaction :transaction/memo ?memo]]
              :in [?a]
              :args [101]}
            (dtl/apply-select
@@ -615,6 +615,74 @@
               :transaction/memo]
              {:relationships #{[:transaction :transaction-item]}}))
         "Multiple additional select columns can be specified")))
+
+(deftest apply-select-sorts-where-clauses
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?x ?transaction-date]
+             :where [[?transaction :transaction/transaction-date ?transaction-date]
+                     [?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/transaction-date
+             {:relationships #{[:transaction :transaction-item]}
+              :datalog/hints [:transaction/transaction-date]}))
+        "Hinted attributes are sorted to the front of the where clauses")
+    (is (= '{:find [?x ?description ?memo]
+             :where [[?transaction :transaction/description ?description]
+                     [?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/memo ?memo]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             [:transaction/description
+              :transaction/memo]
+             {:relationships #{[:transaction :transaction-item]}
+              :datalog/hints [:transaction/description]}))
+        "Only the hinted attribute is promoted, others sort normally")))
+
+(deftest apply-select-sorts-with-graph-apex
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?x ?name]
+             :where [[?x :transaction-item/account ?a]
+                     [?entity :entity/name ?name]
+                     [?transaction :transaction/entity ?entity]
+                     [?x :transaction-item/transaction ?transaction]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :entity/name
+             {:relationships #{[:entity :transaction]
+                               [:transaction :transaction-item]}
+              :graph-apex :entity}))
+        "Where clauses are sorted by distance from graph apex")))
+
+(deftest apply-select-sorts-input-refs-before-joins
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]
+                                  [?x :transaction-item/quantity ?b]]
+                          :in [?a ?b]
+                          :args [101 10]})]
+    (is (= '{:find [?x ?transaction-date]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/quantity ?b]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/transaction-date ?transaction-date]]
+             :in [?a ?b]
+             :args [101 10]}
+           (dtl/apply-select
+             q
+             :transaction/transaction-date
+             {:relationships #{[:transaction :transaction-item]}}))
+        "Clauses referencing input variables sort before join clauses")))
 
 (deftest apply-criteria-to-array-field
   (is (= '{:find [?x]
@@ -631,8 +699,8 @@
 (deftest criteria-join-on-direct-model-ref
   (is (= '{:find [?x]
            :where [[?d :reconciliation/items ?x]
-                   [?transaction :transaction/items ?x]
                    [?x :transaction-item/account ?a]
+                   [?transaction :transaction/items ?x]
                    [?transaction :transaction/transaction-date ?transaction-date]
                    [(>= ?transaction-date ?b)]
                    [(<= ?transaction-date ?c)]]
