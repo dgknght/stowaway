@@ -675,11 +675,13 @@
               :select (->vector select)})
       infer-target
       calculate-graph
+      map-hints
       extract-select-inputs
       apply-select-to-find
       apply-select-to-where
       apply-select-to-in
       apply-select-to-args
+      sort-where-clauses
       :query))
 
 (defn- ensure-attr
