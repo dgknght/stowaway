@@ -173,14 +173,16 @@
   (if the attribute is an entity reference) or a 0 in the second."
   ([shortest-path entities ctx]
    #(clause->sortable % shortest-path entities ctx))
-  ([clause shortest-path entities {:datalog/keys [hint-map]}]
+  ([clause shortest-path entities {:datalog/keys [hint-map] :keys [input-vars]}]
    (if (or (list? clause) ; e.g. (or-join ...)
            (list? (first clause))) ; e.g. [(>= :user/age 21)]
-     [999 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
+     [999 1 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
      (let [attr (second clause)]
        (if-let [i (hint-map attr)]
-         [i 0 0]
-         ((attr->sortable shortest-path entities) attr))))))
+         [i 0 0 0]
+         (let [[hint-pos distance entity-flag] ((attr->sortable shortest-path entities) attr)
+               refs-input? (if (some input-vars clause) 0 1)]
+           [hint-pos refs-input? distance entity-flag]))))))
 
 (defn- sort-where-clauses
   "Given a sequence of where clause, sort the clauses with the aim of putting
@@ -189,7 +191,8 @@
   [{:keys [relationships graph-apex graph] :as ctx}]
   (let [entities (->> relationships seq flatten set)
         shortest #(shortest-path graph graph-apex %)
-        sorter (clause->sortable shortest entities ctx)]
+        input-vars (set (concat (get-in ctx [:query :in]) (:inputs ctx)))
+        sorter (clause->sortable shortest entities (assoc ctx :input-vars input-vars))]
     (update-in ctx
                [:query :where]
                (partial sort-by sorter))))
