@@ -1,11 +1,14 @@
 # stowaway
 
+[![Clojure CI](https://github.com/dgknght/stowaway/actions/workflows/clojure.yml/badge.svg)](https://github.com/dgknght/stowaway/actions/workflows/clojure.yml)
+
 A Clojure library designed to abstract the storage mechanism from the business logic.
 
 ## Usage
 
 Within the application, when access to the data store is needed,
 wrap the usage in `with-storage`, which reifies a storage stragey.
+
 ```clojure
 (:require [stowaway.core :as storage])
 
@@ -14,6 +17,7 @@ wrap the usage in `with-storage`, which reifies a storage stragey.
 ```
 
 ## Configuration
+
 One or more strategies can be registered to be used at runtime. One way to manage
 storing different models is to create multi methods for each type of model.
 
@@ -63,11 +67,11 @@ Copyright © 2020 FIXME
 
 This program and the accompanying materials are made available under the
 terms of the Eclipse Public License 2.0 which is available at
-http://www.eclipse.org/legal/epl-2.0.
+[http://www.eclipse.org/legal/epl-2.0](http://www.eclipse.org/legal/epl-2.0).
 
 This Source Code may also be made available under the following Secondary
 Licenses when the conditions for such availability set forth in the Eclipse
 Public License, v. 2.0 are satisfied: GNU General Public License as published by
 the Free Software Foundation, either version 2 of the License, or (at your
 option) any later version, with the GNU Classpath Exception which is available
-at https://www.gnu.org/software/classpath/license.html.
+at [https://www.gnu.org/software/classpath/license.html](https://www.gnu.org/software/classpath/license.html).
