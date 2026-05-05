@@ -611,6 +611,22 @@
       (assoc-in ctx [:query :find] attrs)
       (update-in ctx [:query :find] concat attrs))))
 
+(defn- apply-select-to-pull
+  "When :pull is present, add the attributes to the :find
+  clause within the vector of attributes in `(pull ?x [*])`."
+  [{:as ctx :keys [pull]}]
+  (if (seq pull)
+    (update-in ctx
+               [:query :find]
+               (fn [f]
+                 (map (fn [v]
+                        (if (and (list? v)
+                                 (= 'pull (first v)))
+                          (apply list (concat v pull))
+                          v))
+                      f)))
+    ctx))
+
 (defn- apply-select-to-where
   [{:keys [select
            entity-ref
@@ -647,6 +663,39 @@
            :inputs inputs
            :args args)))
 
+(defn- ->inverse-rel
+  [relationships]
+  (fn [attr]
+    (let [[parent child alias] (->> relationships
+                                    (filter #(and (= (name (first %))
+                                                     (name attr))
+                                                  (= (name (second %))
+                                                     (namespace attr)))))]
+      (keyword (name parent)
+               (str "_"
+                    (name (or alias child)))))))
+
+(defn- separate-directly-linked
+  "Remove the :select list into attributes that can be reached
+  from the target via a reverse relationship and put them in
+  a list at :pull"
+  [{:as ctx :keys [select target relationships]}]
+  ; The only reason to do this is to select an attribute
+  ; from an entity with the relationship is defined on the 
+  ; related entity and not the target
+  (let [entities (->> relationships
+                      (filter #(= target (second %)))
+                      (map (comp name first))
+                      set)
+        {:keys [slct pull]} (group-by (fn [k]
+                                        (if (entities (name k))
+                                          :pull
+                                          :select))
+                                      select)]
+    (assoc ctx
+           :select slct
+           :pull (map (->inverse-rel relationships) pull))))
+
 (defn- apply-select-to-args
   [{:as ctx :keys [args]}]
   (update-in ctx [:query :args] (fnil concat []) args))
@@ -679,7 +728,9 @@
       infer-target
       calculate-graph
       map-hints
+      separate-directly-linked
       extract-select-inputs
+      apply-select-to-pull
       apply-select-to-find
       apply-select-to-where
       apply-select-to-in
