@@ -619,7 +619,7 @@
            (dtl/apply-select
              '{:find [(pull ?x [*])]}
              [:transaction-item/transaction]
-             {:relationships #{[:transaction :transaction-item :items]}
+             {:relationships #{[:transaction-item :transaction :items]}
               :target :transaction-item})))))
 
 (deftest apply-select-sorts-where-clauses

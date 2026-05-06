@@ -682,15 +682,18 @@
 (defn- ->inverse-rel
   [relationships]
   (fn [attr]
-    (let [[parent child alias] (->> relationships
-                                    (filter #(and (= (name (first %))
+    (let [[primary-entity
+           referring-entity
+           alias]
+          (->> relationships
+                                    (filter #(and (= (name (second %))
                                                      (name attr))
-                                                  (= (name (second %))
+                                                  (= (name (first %))
                                                      (namespace attr))))
                                     first)]
-      (keyword (name parent)
+      (keyword (name referring-entity)
                (str "_"
-                    (name (or alias child)))))))
+                    (name (or alias primary-entity)))))))
 
 (defn- separate-reverse-linked-entities
   "Remove the :select list into attributes that can be reached
@@ -698,11 +701,11 @@
   a list at :pull"
   [{:as ctx :keys [target relationships]}]
   ; The only reason to do this is to select an attribute
-  ; from an entity with the relationship is defined on the 
+  ; from an entity when the relationship is defined on the 
   ; related entity and not the target
   (let [entities (->> relationships
-                      (filter #(= target (second %)))
-                      (map (comp name first))
+                      (filter #(= target (first %)))
+                      (map (comp name second))
                       set)
         {:keys [select pull]} (group-by (fn [k]
                                         (if (entities (name k))
