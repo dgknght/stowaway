@@ -696,7 +696,7 @@
   "Remove the :select list into attributes that can be reached
   from the target via a reverse relationship and put them in
   a list at :pull"
-  [{:as ctx :keys [select target relationships]}]
+  [{:as ctx :keys [target relationships]}]
   ; The only reason to do this is to select an attribute
   ; from an entity with the relationship is defined on the 
   ; related entity and not the target
@@ -704,14 +704,14 @@
                       (filter #(= target (second %)))
                       (map (comp name first))
                       set)
-        {:keys [slct pull]} (group-by (fn [k]
+        {:keys [select pull]} (group-by (fn [k]
                                         (if (entities (name k))
                                           :pull
                                           :select))
-                                      select)]
+                                      (:select ctx))]
     (assoc ctx
-           :select slct
-           :pull (map (->inverse-rel relationships) pull))))
+           :select (vec select)
+           :pull (mapv (->inverse-rel relationships) pull))))
 
 (defn- apply-select-to-args
   [{:as ctx :keys [args]}]
