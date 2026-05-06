@@ -189,13 +189,15 @@
   the most restrictive clauses first. To achieve this, put entities higher in
   the relationship hierarchy first."
   [{:keys [relationships graph-apex graph] :as ctx}]
-  (let [entities (->> relationships seq flatten set)
-        shortest #(shortest-path graph graph-apex %)
-        input-vars (set (concat (get-in ctx [:query :in]) (:inputs ctx)))
-        sorter (clause->sortable shortest entities (assoc ctx :input-vars input-vars))]
-    (update-in ctx
-               [:query :where]
-               (partial sort-by sorter))))
+  (if (-> ctx :query :where seq)
+    (let [entities (->> relationships seq flatten set)
+          shortest #(shortest-path graph graph-apex %)
+          input-vars (set (concat (get-in ctx [:query :in]) (:inputs ctx)))
+          sorter (clause->sortable shortest entities (assoc ctx :input-vars input-vars))]
+      (update-in ctx
+                 [:query :where]
+                 (partial sort-by sorter)))
+    ctx))
 
 (defmulti ^:private criterion->inputs
   (fn [[_ v]]
@@ -611,6 +613,19 @@
       (assoc-in ctx [:query :find] attrs)
       (update-in ctx [:query :find] concat attrs))))
 
+(defn- pull-clause?
+  [x]
+  (and (list? x)
+       (= 3 (count x))
+       (= 'pull (first x))))
+
+(defn- append-pull-attrs
+  [clause attrs]
+  ; e.g., (pull ?x [*]) -> (pull ?x [* :transaction/_items])
+  (let [ref (nth clause 1)
+        existing (nth clause 2)]
+    (list 'pull ref (vec (concat existing attrs)))))
+
 (defn- apply-select-to-pull
   "When :pull is present, add the attributes to the :find
   clause within the vector of attributes in `(pull ?x [*])`."
@@ -619,10 +634,9 @@
     (update-in ctx
                [:query :find]
                (fn [f]
-                 (map (fn [v]
-                        (if (and (list? v)
-                                 (= 'pull (first v)))
-                          (apply list (concat v pull))
+                 (mapv (fn [v]
+                        (if (pull-clause? v)
+                          (append-pull-attrs v pull)
                           v))
                       f)))
     ctx))
@@ -633,19 +647,21 @@
            target]
     :or {entity-ref '?x}
     :as ctx}]
-  (update-in ctx
-             [:query :where]
-             concat
-             (->> select
-                  (remove #(= :id %))
-                  (map (comp (replace-nil ctx)
-                             #(let [n (namespace %)]
-                                (vector (if (= target (keyword n))
-                                          entity-ref
-                                          (symbol (str "?" n)))
-                                        %
-                                        (attr-ref % ctx))))))
-             (extract-joining-clauses-from-attributes select ctx)))
+  (if (seq select)
+    (update-in ctx
+               [:query :where]
+               concat
+               (->> select
+                    (remove #(= :id %))
+                    (map (comp (replace-nil ctx)
+                               #(let [n (namespace %)]
+                                  (vector (if (= target (keyword n))
+                                            entity-ref
+                                            (symbol (str "?" n)))
+                                          %
+                                          (attr-ref % ctx))))))
+               (extract-joining-clauses-from-attributes select ctx))
+    ctx))
 
 (defn- extract-select-inputs
   [{:keys [select nil-replacements query] :as ctx}]
@@ -670,12 +686,13 @@
                                     (filter #(and (= (name (first %))
                                                      (name attr))
                                                   (= (name (second %))
-                                                     (namespace attr)))))]
+                                                     (namespace attr))))
+                                    first)]
       (keyword (name parent)
                (str "_"
                     (name (or alias child)))))))
 
-(defn- separate-directly-linked
+(defn- separate-reverse-linked-entities
   "Remove the :select list into attributes that can be reached
   from the target via a reverse relationship and put them in
   a list at :pull"
@@ -698,11 +715,15 @@
 
 (defn- apply-select-to-args
   [{:as ctx :keys [args]}]
-  (update-in ctx [:query :args] (fnil concat []) args))
+  (if (seq args)
+    (update-in ctx [:query :args] (fnil concat []) args)
+    ctx))
 
 (defn- apply-select-to-in
   [{:as ctx :keys [inputs]}]
-  (update-in ctx [:query :in] (fnil concat []) inputs))
+  (if (seq inputs)
+    (update-in ctx [:query :in] (fnil concat []) inputs)
+    ctx))
 
 (s/def ::select (s/or :scalar keyword?
                       :vector (s/coll-of keyword?)))
@@ -728,7 +749,7 @@
       infer-target
       calculate-graph
       map-hints
-      separate-directly-linked
+      separate-reverse-linked-entities
       extract-select-inputs
       apply-select-to-pull
       apply-select-to-find
