@@ -614,7 +614,13 @@
              [:transaction/description
               :transaction/memo]
              {:relationships #{[:transaction :transaction-item]}}))
-        "Multiple additional select columns can be specified")))
+        "Multiple additional select columns can be specified")
+    (is (= '{:find [(pull ?x [* :transaction/_items])]}
+           (dtl/apply-select
+             '{:find [(pull ?x [*])]}
+             [:transaction-item/transaction]
+             {:relationships #{[:transaction-item :transaction :items]}
+              :target :transaction-item})))))
 
 (deftest apply-select-sorts-where-clauses
   (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
