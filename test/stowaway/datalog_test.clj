@@ -550,7 +550,7 @@
   (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
                          :in [?a]
                          :args [101]})]
-    #_(is (= '{:find [?quantity]
+    (is (= '{:find [?quantity]
              :where [[?x :transaction-item/account ?a]
                      [?x :transaction-item/quantity ?quantity]]
              :in [?a]
@@ -560,7 +560,7 @@
              :transaction-item/quantity
              {:replace true}))
         "The entire select clause can be specified as an attribute")
-    #_(is (= '{:find [?x]
+    (is (= '{:find [?x]
              :where [[?x :transaction-item/account ?a]]
              :in [?a]
              :args [101]}
@@ -569,7 +569,7 @@
              :id
              {:replace true}))
         "The select clause can reference the entity/id")
-    #_(is (= '{:find [?my-entity]
+    (is (= '{:find [?my-entity]
              :where [[?my-entity :transaction-item/account ?a]]
              :in [?a]
              :args [101]}
@@ -579,7 +579,7 @@
              {:replace true
               :entity-ref '?my-entity}))
         "The select clause can reference the id with a custom entity reference")
-    #_(is (= '{:find [?quantity ?value]
+    (is (= '{:find [?quantity ?value]
              :where [[?x :transaction-item/account ?a]
                      [?x :transaction-item/quantity ?quantity]
                      [?x :transaction-item/value ?value]]
@@ -591,7 +591,7 @@
               :transaction-item/value]
              {:replace true}))
         "The entire select clause can be specified as a list of attributes")
-    #_(is (= '{:find [?x ?transaction-date]
+    (is (= '{:find [?x ?transaction-date]
              :where [[?x :transaction-item/account ?a]
                      [?x :transaction-item/transaction ?transaction]
                      [?transaction :transaction/transaction-date ?transaction-date]]
@@ -602,7 +602,7 @@
              :transaction/transaction-date
              {:relationships #{[:transaction :transaction-item]}}))
         "An additional select column can be specified from another model")
-    #_(is (= '{:find [?x ?description ?memo]
+    (is (= '{:find [?x ?description ?memo]
              :where [[?x :transaction-item/account ?a]
                      [?x :transaction-item/transaction ?transaction]
                      [?transaction :transaction/description ?description]
