@@ -466,3 +466,8 @@
                              [:account :transaction-item]
                              [:account :reconciliation]
                              [:transaction :transaction-item]}}))))
+
+(deftest filter-for-array-field-containing-a-value
+  (is (= ["SELECT product.* FROM product WHERE ? = ANY(product.tags)"
+          "waterproof"]
+         (sql/->query {:product/tags [:any "waterproof"]}))))
