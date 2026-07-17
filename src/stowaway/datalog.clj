@@ -70,16 +70,16 @@
   namespace, and a set of relationships, return a where clause that
   joins the two namespaces."
   [edge {:keys [source relationships inputs-map]}]
-  (let [rels (->> relationships
-                  (map (fn [[k v]]
-                         [#{k v}
-                          [k v]]))
+  (let [rel->key (comp set
+                       #(take 2 %))
+        rels (->> relationships
+                  (map (juxt rel->key identity))
                   (into {}))
         rel-key (set edge)
         aliases (->> relationships
                      (filter #(= 3 (count %)))
-                     (map (fn [[k v a]]
-                            [#{k v} a]))
+                     (map (fn [r]
+                            [(rel->key r) (nth r 2)]))
                      (into {}))
         [parent child :as directed] (rels rel-key)
         ; When one side of this join or the other is passed in as an
@@ -88,7 +88,7 @@
         ; the reference.
         [p-self c-self] (mapv #(get-in inputs-map
                                        [(keyword (name %)
-                                                "_self")])
+                                                 "_self")])
                               directed)
         entity-ref (cond
                      (= source child) '?x
