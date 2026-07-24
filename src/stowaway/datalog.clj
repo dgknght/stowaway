@@ -42,7 +42,7 @@
 
 (defn- attr-ref
   "Given an attribute keyword, return a symbol that will represent
-  the value in the query."
+  the value in the query. E.g. `:user/first-name` -> `?first-name`"
   ([opts]
    #(attr-ref % opts))
   ([k {:keys [entity-ref suffix] :or {entity-ref '?x}}]
@@ -51,6 +51,12 @@
      (symbol (str "?"
                 (name k)
                 suffix)))))
+
+(defn- working-attr
+  [attr {:keys [remap]}]
+  (if (= "created-at" (name attr))
+    :db/txInstant
+    (remap attr attr)))
 
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
@@ -176,13 +182,16 @@
   ([clause shortest-path entities {:datalog/keys [hint-map] :keys [input-vars]}]
    (if (or (list? clause) ; e.g. (or-join ...)
            (list? (first clause))) ; e.g. [(>= :user/age 21)]
-     [999 1 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
-     (let [attr (second clause)]
-       (if-let [i (hint-map attr)]
-         [i 0 0 0]
-         (let [[hint-pos distance entity-flag] ((attr->sortable shortest-path entities) attr)
-               refs-input? (if (some input-vars clause) 0 1)]
-           [hint-pos refs-input? distance entity-flag]))))))
+     [999 2 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
+     (let [e-ref (first clause)
+           attr (second clause)]
+       (if (= e-ref '?tx)
+         [999 1 999 0]
+         (if-let [i (hint-map attr)]
+           [i 0 0 0]
+           (let [[hint-pos distance entity-flag] ((attr->sortable shortest-path entities) attr)
+                 refs-input? (if (some input-vars clause) 0 1)]
+             [hint-pos refs-input? distance entity-flag])))))))
 
 (defn- sort-where-clauses
   "Given a sequence of where clause, sort the clauses with the aim of putting
@@ -309,14 +318,18 @@
     (if (or (= :id k)
             (= (name target)
                (namespace k)))
-      entity-ref
+      (if (= "created-at"
+             (name k))
+        '?tx
+        entity-ref)
       (symbol (str "?" (namespace k))))
     entity-ref))
 
 (defmulti ^:private criterion->where dispatch-criterion)
 
+; {:user/first-name "John"} -> [?x :user/first-name ?a]
 (defmethod criterion->where :default
-  [[k v :as criterion] {:keys [inputs-map remap] :as opts}]
+  [[k v :as criterion] {:keys [inputs-map] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
   ; :in clause as the entity reference directly for simple equality tests
   ; We don't want to do that, though, if the attribute has been remapped
@@ -326,7 +339,7 @@
   ; :_self also gets special handling, as the input can be referenced directly
   ; in the where clause
   (let [orig-k (if (= ::id k) :id k)
-        attr (get-in remap [orig-k] orig-k)]
+        attr (working-attr orig-k opts)]
     (when (and (not= :id attr)
                (not= "_self" (name attr)))
       [(if v
@@ -335,22 +348,30 @@
           (get-in inputs-map criterion)]
          [(list 'missing? '$ (criterion-e k opts) attr)])])))
 
+; {:budget/period [:= [:month 12]]} -> [?x :budget/period ?a]
+; avoid interpreting :month as an operator
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs-map remap] :as opts}]
-  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs-map [k v])]])
+  [[k [_ v]] {:keys [inputs-map] :as opts}]
+  [[(criterion-e k opts) (working-attr k opts) (get-in inputs-map [k v])]])
 
+; {:account/type [:in '(:asset :expense)]} ->
+;   [[?x :account/type ?type]
+;    [(contains? ?a ?type]]
 (defmethod criterion->where :inclusion
   [[k [_ vs]] {:as opts :keys [inputs-map]}]
   (let [e-ref (criterion-e k opts)
         a-ref (attr-ref k opts)
         input (get-in inputs-map [k (set vs)])]
     (cond->> [[(list 'contains? input a-ref)]]
-      (not= :id k) (cons [e-ref k a-ref]))))
+      (not= :id k) (cons [e-ref (working-attr k opts) a-ref]))))
 
+; {:account/balance [:> 100M]} ->
+;    [[?x :account/balance ?balance]
+;     [(> ?balance ?a)]]
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs-map remap] :as opts}]
+  [[k [pred v]] {:keys [inputs-map] :as opts}]
   (let [in (get-in inputs-map [k v])
-        attr (get-in remap [k] k)
+        attr (working-attr k opts)
         e-ref (criterion-e k opts)]
     (if (= :id attr)
       [[(list (-> pred name symbol) e-ref in)]]
@@ -358,11 +379,15 @@
         [[e-ref attr ref]
          [(list (-> pred name symbol) ref in)]]))))
 
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]} ->
+;    [[?x :transaction/date ?date]
+;     [(>= ?date ?a)]
+;     [(<= ?date ?b)]]
 (defmethod criterion->where :range
-  [[k [pred v1 v2]] {:keys [inputs-map remap] :as opts}]
+  [[k [pred v1 v2]] {:keys [inputs-map] :as opts}]
   (let [in1 (get-in inputs-map [k v1])
         in2 (get-in inputs-map [k v2])
-        attr (get-in remap [k] k)
+        attr (working-attr k opts)
         e-ref (criterion-e k opts)
         ref (symbol (str "?" (name k)))
         [pred1 pred2] (case pred
@@ -374,31 +399,45 @@
      [(list pred1 ref in1)]
      [(list pred2 ref in2)]]))
 
+; {:transaction/date [:and [:>= "2020-01-01"] [:< "2020-02-01"]]} ->
+;    [[?x :transaction/date ?date]
+;     [(>= ?date ?a)]
+;     [(< ?date ?b)]]
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs-map remap] :as opts}]
+  [[k [_ & cs]] {:keys [inputs-map] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
-           [(criterion-e k opts) (get-in remap [k] k) ref]
+           [(criterion-e k opts) (working-attr k opts) ref]
            (map (fn [[pred v]]
                   [(list (-> pred name symbol) ref (get-in inputs-map [k v]))])
                 cs))))
 
+; {:user/identities [:including-match {:identity/oauth-provider :google
+;                                      :identity/oauth-id "abc123"}] ->
+;    [[?identity :identity/oauth-provider ?a]
+;     [?identity :identity/oauth-id ?b]
+;     [?x :user/identities ?identity]]
 (defmethod criterion->where :entity-match
-  [[k [_ match]] {:keys [entity-ref remap] :as opts}]
+  [[k [_ match]] {:keys [entity-ref] :as opts}]
   (let [other-ent-ref (symbol (str "?" (singular (name k))))]
-      (cons [entity-ref (get-in remap [k] k) other-ent-ref]
+      (cons [entity-ref (working-attr k opts) other-ent-ref]
             (mapcat #(criterion->where % (assoc opts :entity-ref other-ent-ref))
                     match))))
 
+; {:user/identities [:including [:google "abc123"]]} ->
+;    [[?x :user/identities ?a]]
 (defmethod criterion->where :including
   [[k [_ match]] {:keys [entity-ref inputs-map]}]
   [[entity-ref k (get-in inputs-map [k match])]])
 
 ; TODO: Confirm this is different from :inclusion
+; {:order/tags [:&& #{:rush :preferred}]} ->
+;   [[?x :order/tags ?tags]
+;    [(contains? ?a ?tags)]]
 (defmethod criterion->where :&&
   [[k [_ vs]] {:keys [entity-ref inputs-map] :as opts}]
   (let [a (attr-ref k opts)]
-    [[entity-ref k a]
+    [[entity-ref (working-attr k opts) a]
      [(list 'contains? (get-in inputs-map [k vs]) a)]]))
 
 (defmulti ^:private criteria->where util/type-dispatch)
@@ -413,10 +452,26 @@
       [(list 'get-else '$ e a (get-in inputs-map [a rep])) v]
       clause)))
 
+(defn- append-metadata-mappings
+  [criteria {:keys [metadata-anchors] :as opts} clauses]
+
+  (->> (c/attributes criteria)
+       (map (juxt namespace name))
+       (filter (fn [[_ k]] (= "created-at" k)))
+       (map (fn [[n _k]]
+              (let [anchor-attr (metadata-anchors (keyword n))]
+                [(criterion-e anchor-attr opts)
+                 anchor-attr
+                 (attr-ref anchor-attr opts)
+                 '?tx
+                 'true])))
+       (concat clauses)))
+
 (defmethod criteria->where ::stow/map
   [criteria opts]
   (->> criteria
        (mapcat #(criterion->where % opts))
+       (append-metadata-mappings criteria opts)
        (map (replace-nil opts))
        vec))
 
