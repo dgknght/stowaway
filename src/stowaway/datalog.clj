@@ -52,6 +52,10 @@
                 (name k)
                 suffix)))))
 
+(defn- working-attr
+  [attr {:keys [remap]}]
+  (remap attr attr))
+
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
 (s/def ::target keyword?)
@@ -316,7 +320,7 @@
 (defmulti ^:private criterion->where dispatch-criterion)
 
 (defmethod criterion->where :default
-  [[k v :as criterion] {:keys [inputs-map remap] :as opts}]
+  [[k v :as criterion] {:keys [inputs-map] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
   ; :in clause as the entity reference directly for simple equality tests
   ; We don't want to do that, though, if the attribute has been remapped
@@ -326,7 +330,7 @@
   ; :_self also gets special handling, as the input can be referenced directly
   ; in the where clause
   (let [orig-k (if (= ::id k) :id k)
-        attr (get-in remap [orig-k] orig-k)]
+        attr (working-attr orig-k opts)]
     (when (and (not= :id attr)
                (not= "_self" (name attr)))
       [(if v
@@ -336,8 +340,8 @@
          [(list 'missing? '$ (criterion-e k opts) attr)])])))
 
 (defmethod criterion->where :explicit=
-  [[k [_ v]] {:keys [inputs-map remap] :as opts}]
-  [[(criterion-e k opts) (get-in remap [k] k) (get-in inputs-map [k v])]])
+  [[k [_ v]] {:keys [inputs-map] :as opts}]
+  [[(criterion-e k opts) (working-attr k opts) (get-in inputs-map [k v])]])
 
 (defmethod criterion->where :inclusion
   [[k [_ vs]] {:as opts :keys [inputs-map]}]
@@ -345,12 +349,12 @@
         a-ref (attr-ref k opts)
         input (get-in inputs-map [k (set vs)])]
     (cond->> [[(list 'contains? input a-ref)]]
-      (not= :id k) (cons [e-ref k a-ref]))))
+      (not= :id k) (cons [e-ref (working-attr k opts) a-ref]))))
 
 (defmethod criterion->where :binary-pred
-  [[k [pred v]] {:keys [inputs-map remap] :as opts}]
+  [[k [pred v]] {:keys [inputs-map] :as opts}]
   (let [in (get-in inputs-map [k v])
-        attr (get-in remap [k] k)
+        attr (working-attr k opts)
         e-ref (criterion-e k opts)]
     (if (= :id attr)
       [[(list (-> pred name symbol) e-ref in)]]
@@ -359,10 +363,10 @@
          [(list (-> pred name symbol) ref in)]]))))
 
 (defmethod criterion->where :range
-  [[k [pred v1 v2]] {:keys [inputs-map remap] :as opts}]
+  [[k [pred v1 v2]] {:keys [inputs-map] :as opts}]
   (let [in1 (get-in inputs-map [k v1])
         in2 (get-in inputs-map [k v2])
-        attr (get-in remap [k] k)
+        attr (working-attr k opts)
         e-ref (criterion-e k opts)
         ref (symbol (str "?" (name k)))
         [pred1 pred2] (case pred
@@ -375,18 +379,18 @@
      [(list pred2 ref in2)]]))
 
 (defmethod criterion->where :intersection
-  [[k [_ & cs]] {:keys [inputs-map remap] :as opts}]
+  [[k [_ & cs]] {:keys [inputs-map] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
     (apply vector
-           [(criterion-e k opts) (get-in remap [k] k) ref]
+           [(criterion-e k opts) (working-attr k opts) ref]
            (map (fn [[pred v]]
                   [(list (-> pred name symbol) ref (get-in inputs-map [k v]))])
                 cs))))
 
 (defmethod criterion->where :entity-match
-  [[k [_ match]] {:keys [entity-ref remap] :as opts}]
+  [[k [_ match]] {:keys [entity-ref] :as opts}]
   (let [other-ent-ref (symbol (str "?" (singular (name k))))]
-      (cons [entity-ref (get-in remap [k] k) other-ent-ref]
+      (cons [entity-ref (working-attr k opts) other-ent-ref]
             (mapcat #(criterion->where % (assoc opts :entity-ref other-ent-ref))
                     match))))
 
@@ -398,7 +402,7 @@
 (defmethod criterion->where :&&
   [[k [_ vs]] {:keys [entity-ref inputs-map] :as opts}]
   (let [a (attr-ref k opts)]
-    [[entity-ref k a]
+    [[entity-ref (working-attr k opts) a]
      [(list 'contains? (get-in inputs-map [k vs]) a)]]))
 
 (defmulti ^:private criteria->where util/type-dispatch)
