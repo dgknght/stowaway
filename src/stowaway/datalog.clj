@@ -42,7 +42,7 @@
 
 (defn- attr-ref
   "Given an attribute keyword, return a symbol that will represent
-  the value in the query."
+  the value in the query. E.g. `:user/first-name` -> `?first-name`"
   ([opts]
    #(attr-ref % opts))
   ([k {:keys [entity-ref suffix] :or {entity-ref '?x}}]
@@ -319,6 +319,7 @@
 
 (defmulti ^:private criterion->where dispatch-criterion)
 
+; {:user/first-name "John"} -> [?x :user/first-name ?a]
 (defmethod criterion->where :default
   [[k v :as criterion] {:keys [inputs-map] :as opts}]
   ; we're handling :id with special logic, as it can be specified in the
@@ -339,10 +340,15 @@
           (get-in inputs-map criterion)]
          [(list 'missing? '$ (criterion-e k opts) attr)])])))
 
+; {:budget/period [:= [:month 12]]} -> [?x :budget/period ?a]
+; avoid interpreting :month as an operator
 (defmethod criterion->where :explicit=
   [[k [_ v]] {:keys [inputs-map] :as opts}]
   [[(criterion-e k opts) (working-attr k opts) (get-in inputs-map [k v])]])
 
+; {:account/type [:in '(:asset :expense)]} ->
+;   [[?x :account/type ?type]
+;    [(contains? ?a ?type]]
 (defmethod criterion->where :inclusion
   [[k [_ vs]] {:as opts :keys [inputs-map]}]
   (let [e-ref (criterion-e k opts)
@@ -351,6 +357,9 @@
     (cond->> [[(list 'contains? input a-ref)]]
       (not= :id k) (cons [e-ref (working-attr k opts) a-ref]))))
 
+; {:account/balance [:> 100M]} ->
+;    [[?x :account/balance ?balance]
+;     [(> ?balance ?a)]]
 (defmethod criterion->where :binary-pred
   [[k [pred v]] {:keys [inputs-map] :as opts}]
   (let [in (get-in inputs-map [k v])
@@ -362,6 +371,10 @@
         [[e-ref attr ref]
          [(list (-> pred name symbol) ref in)]]))))
 
+; {:transaction/date [:between "2020-01-01" "2020-02-01"]} ->
+;    [[?x :transaction/date ?date]
+;     [(>= ?date ?a)]
+;     [(<= ?date ?b)]]
 (defmethod criterion->where :range
   [[k [pred v1 v2]] {:keys [inputs-map] :as opts}]
   (let [in1 (get-in inputs-map [k v1])
@@ -378,6 +391,10 @@
      [(list pred1 ref in1)]
      [(list pred2 ref in2)]]))
 
+; {:transaction/date [:and [:>= "2020-01-01"] [:< "2020-02-01"]]} ->
+;    [[?x :transaction/date ?date]
+;     [(>= ?date ?a)]
+;     [(< ?date ?b)]]
 (defmethod criterion->where :intersection
   [[k [_ & cs]] {:keys [inputs-map] :as opts}]
   (let [ref (symbol (str "?" (name k)))]
@@ -387,6 +404,11 @@
                   [(list (-> pred name symbol) ref (get-in inputs-map [k v]))])
                 cs))))
 
+; {:user/identities [:including-match {:identity/oauth-provider :google
+;                                      :identity/oauth-id "abc123"}] ->
+;    [[?identity :identity/oauth-provider ?a]
+;     [?identity :identity/oauth-id ?b]
+;     [?x :user/identities ?identity]]
 (defmethod criterion->where :entity-match
   [[k [_ match]] {:keys [entity-ref] :as opts}]
   (let [other-ent-ref (symbol (str "?" (singular (name k))))]
@@ -394,11 +416,16 @@
             (mapcat #(criterion->where % (assoc opts :entity-ref other-ent-ref))
                     match))))
 
+; {:user/identities [:including [:google "abc123"]]} ->
+;    [[?x :user/identities ?a]]
 (defmethod criterion->where :including
   [[k [_ match]] {:keys [entity-ref inputs-map]}]
   [[entity-ref k (get-in inputs-map [k match])]])
 
 ; TODO: Confirm this is different from :inclusion
+; {:order/tags [:&& #{:rush :preferred}]} ->
+;   [[?x :order/tags ?tags]
+;    [(contains? ?a ?tags)]]
 (defmethod criterion->where :&&
   [[k [_ vs]] {:keys [entity-ref inputs-map] :as opts}]
   (let [a (attr-ref k opts)]
