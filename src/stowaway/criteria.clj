@@ -189,3 +189,13 @@
                     oper
                     (map #(apply apply-to % f args) cs))
              (meta criteria)))
+
+(defmulti attributes type)
+
+(defmethod attributes :default
+  [x]
+  (keys x))
+
+(defmethod attributes ::stow/vector
+  [[_cnj & cs]]
+  (set (mapcat attributes cs)))

@@ -161,3 +161,10 @@
     (is (= {:user/name [:>= "john"]}
            (c/apply-to {:user/name [:>= "JoHn"]} f))
         "The fn is applied to values within an operation vector")))
+
+(deftest extract-all-attributes
+  (is (= #{:user/first-name :user/last-name :user/age}
+         (c/attributes [:or
+                        {:user/first-name "John"}
+                        {:user/last-name "Doe"
+                         :user/age [:> 30]}]))))
