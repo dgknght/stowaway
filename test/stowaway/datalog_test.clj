@@ -721,3 +721,15 @@
             :relationships #{[:transaction-item :reconciliation :items]
                              [:transaction-item :transaction :items]
                              [:account :transaction-item]}}))))
+
+(deftest filter-on-creation-timestamp
+  (is (= '{:find [?x]
+           :where [[?x :transaction/transaction-date ?transaction-date ?tx true]
+                   [?tx :db/txInstant ?created-at]
+                   [(>= ?created-at ?a)]]
+           :in [?a]
+           :args [#inst "2020-01-01T00:00:00.000Z"]}
+         (dtl/apply-criteria
+           query
+           {:transaction/created-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
+           {:metadata-anchors {:transaction :transaction/transaction-date}}))))

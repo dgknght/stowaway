@@ -54,7 +54,9 @@
 
 (defn- working-attr
   [attr {:keys [remap]}]
-  (remap attr attr))
+  (if (= "created-at" (name attr))
+    :db/txInstant
+    (remap attr attr)))
 
 (s/def ::entity-ref symbol?)
 (s/def ::remap (s/map-of keyword? keyword?))
@@ -180,13 +182,16 @@
   ([clause shortest-path entities {:datalog/keys [hint-map] :keys [input-vars]}]
    (if (or (list? clause) ; e.g. (or-join ...)
            (list? (first clause))) ; e.g. [(>= :user/age 21)]
-     [999 1 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
-     (let [attr (second clause)]
-       (if-let [i (hint-map attr)]
-         [i 0 0 0]
-         (let [[hint-pos distance entity-flag] ((attr->sortable shortest-path entities) attr)
-               refs-input? (if (some input-vars clause) 0 1)]
-           [hint-pos refs-input? distance entity-flag]))))))
+     [999 2 999 0] ; a list is used for arbitrary predicates like comparisons, etc.
+     (let [e-ref (first clause)
+           attr (second clause)]
+       (if (= e-ref '?tx)
+         [999 1 999 0]
+         (if-let [i (hint-map attr)]
+           [i 0 0 0]
+           (let [[hint-pos distance entity-flag] ((attr->sortable shortest-path entities) attr)
+                 refs-input? (if (some input-vars clause) 0 1)]
+             [hint-pos refs-input? distance entity-flag])))))))
 
 (defn- sort-where-clauses
   "Given a sequence of where clause, sort the clauses with the aim of putting
@@ -313,7 +318,10 @@
     (if (or (= :id k)
             (= (name target)
                (namespace k)))
-      entity-ref
+      (if (= "created-at"
+             (name k))
+        '?tx
+        entity-ref)
       (symbol (str "?" (namespace k))))
     entity-ref))
 
@@ -444,10 +452,26 @@
       [(list 'get-else '$ e a (get-in inputs-map [a rep])) v]
       clause)))
 
+(defn- append-metadata-mappings
+  [criteria {:keys [metadata-anchors] :as opts} clauses]
+
+  (->> (c/attributes criteria)
+       (map (juxt namespace name))
+       (filter (fn [[_ k]] (= "created-at" k)))
+       (map (fn [[n _k]]
+              (let [anchor-attr (metadata-anchors (keyword n))]
+                [(criterion-e anchor-attr opts)
+                 anchor-attr
+                 (attr-ref anchor-attr opts)
+                 '?tx
+                 'true])))
+       (concat clauses)))
+
 (defmethod criteria->where ::stow/map
   [criteria opts]
   (->> criteria
        (mapcat #(criterion->where % opts))
+       (append-metadata-mappings criteria opts)
        (map (replace-nil opts))
        vec))
 
