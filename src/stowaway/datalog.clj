@@ -696,26 +696,41 @@
                       f)))
     ctx))
 
+(defn- select-attr-e-ref
+  [k {:keys [entity-ref target] :or {entity-ref '?x}}]
+  (let [n (namespace k)]
+    (if (= target (keyword n))
+      entity-ref
+      (symbol (str "?" n)))))
+
+(defn- select-created-at-where
+  "The created-at pseudo-attribute isn't a real Datomic attribute; bind its
+  var to the :db/txInstant of the tx that asserted the namespace's anchor
+  attribute (per :metadata-anchors), the same way criteria on created-at
+  are handled by append-metadata-mappings."
+  [k {:keys [metadata-anchors] :as ctx}]
+  (let [anchor-attr (metadata-anchors (keyword (namespace k)))
+        e-ref (select-attr-e-ref anchor-attr ctx)]
+    [[e-ref anchor-attr (attr-ref anchor-attr ctx) '?tx true]
+     ['?tx :db/txInstant (attr-ref k ctx)]]))
+
 (defn- apply-select-to-where
-  [{:keys [select
-           entity-ref
-           target]
-    :or {entity-ref '?x}
-    :as ctx}]
+  [{:keys [select] :as ctx}]
   (if (seq select)
-    (update-in ctx
-               [:query :where]
-               concat
-               (->> select
-                    (remove #(= :id %))
-                    (map (comp (replace-nil ctx)
-                               #(let [n (namespace %)]
-                                  (vector (if (= target (keyword n))
-                                            entity-ref
-                                            (symbol (str "?" n)))
+    (let [attrs (remove #(= :id %) select)
+          [created-at other] ((juxt filter remove)
+                               #(= "created-at" (name %))
+                               attrs)]
+      (update-in ctx
+                 [:query :where]
+                 concat
+                 (->> other
+                      (map (comp (replace-nil ctx)
+                                 #(vector (select-attr-e-ref % ctx)
                                           %
-                                          (attr-ref % ctx))))))
-               (extract-joining-clauses-from-attributes select ctx))
+                                          (attr-ref % ctx)))))
+                 (mapcat #(select-created-at-where % ctx) created-at)
+                 (extract-joining-clauses-from-attributes select ctx)))
     ctx))
 
 (defn- extract-select-inputs

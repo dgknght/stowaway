@@ -733,3 +733,22 @@
            query
            {:transaction/created-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
            {:metadata-anchors {:transaction :transaction/transaction-date}}))))
+
+(deftest select-creation-timestamp
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?x ?created-at]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/transaction-date ?transaction-date ?tx true]
+                     [?tx :db/txInstant ?created-at]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/created-at
+             {:relationships #{[:transaction :transaction-item]}
+              :metadata-anchors {:transaction :transaction/transaction-date}}))
+        "The created-at pseudo-attribute is resolved via :db/txInstant on
+        the tx that asserted the namespace's anchor attribute")))
