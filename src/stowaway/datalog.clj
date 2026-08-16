@@ -52,28 +52,43 @@
                 (name k)
                 suffix)))))
 
+(defn- remapped
+  "Look up attr in :remap. The value is either a plain keyword (a simple
+  rename, e.g. :id -> :xt/id) or a [target-attr anchor-attr] tuple
+  describing a pseudo-attribute whose value lives on the :db/txInstant of
+  the tx that asserted anchor-attr (e.g. a created-at attribute that isn't
+  a real Datomic attribute). Absent an entry, attr passes through as-is."
+  [attr {:keys [remap]}]
+  (get remap attr attr))
+
+(defn- mapped-attr-anchor
+  "If attr is remapped to a [target-attr anchor-attr] tuple, return
+  anchor-attr; nil for a plain rename or an unmapped attribute."
+  [attr opts]
+  (let [m (remapped attr opts)]
+    (when (vector? m)
+      (second m))))
+
 (defn- working-attr
-  [attr {:keys [remap created-at-name] :or {created-at-name "created-at"}}]
-  (if (= created-at-name (name attr))
-    :db/txInstant
-    (remap attr attr)))
+  [attr opts]
+  (let [m (remapped attr opts)]
+    (if (vector? m)
+      (first m)
+      m)))
 
 (s/def ::entity-ref symbol?)
-(s/def ::remap (s/map-of keyword? keyword?))
+(s/def ::remap (s/map-of keyword? (s/or :rename keyword?
+                                        :pseudo-attr (s/tuple keyword? keyword?))))
 (s/def ::target keyword?)
 (s/def ::relationship (s/or :plain   (s/tuple keyword? keyword?)
                             :aliased (s/tuple keyword? keyword? keyword?)))
 (s/def ::relationships (s/coll-of ::relationship :kind set?))
 (s/def ::graph-apex keyword?)
-(s/def ::metadata-anchors (s/map-of keyword? keyword?))
-(s/def ::created-at-name string?)
 (s/def ::options (s/keys :opt-un [::entity-ref
                                   ::remap
                                   ::target
                                   ::relationships
-                                  ::graph-apex
-                                  ::metadata-anchors
-                                  ::created-at-name]))
+                                  ::graph-apex]))
 
 (defn- edge->join-clause
   "Given a graph edge (connection between two namespaces), a source
@@ -317,13 +332,12 @@
                [[] []])))
 
 (defn- criterion-e
-  [k {:keys [entity-ref target created-at-name] :or {created-at-name "created-at"}}]
+  [k {:keys [entity-ref target] :as opts}]
   (if target
     (if (or (= :id k)
             (= (name target)
                (namespace k)))
-      (if (= created-at-name
-             (name k))
+      (if (mapped-attr-anchor k opts)
         '?tx
         entity-ref)
       (symbol (str "?" (namespace k))))
@@ -456,31 +470,18 @@
       [(list 'get-else '$ e a (get-in inputs-map [a rep])) v]
       clause)))
 
-(defn- resolve-metadata-anchor
-  "The created-at pseudo-attribute isn't a real Datomic attribute; it's
-  resolved to the :db/txInstant of the tx that asserted the namespace's
-  anchor attribute. Which attribute anchors which namespace is caller
-  config (:metadata-anchors), not something this code should assume."
-  [n {:keys [metadata-anchors]}]
-  (or (get metadata-anchors (keyword n))
-      (throw (ex-info (format "No :metadata-anchors entry found for namespace %s. An anchor attribute is required to resolve created-at for this namespace."
-                              n)
-                      {:namespace n
-                       :metadata-anchors metadata-anchors}))))
-
 (defn- append-metadata-mappings
-  [criteria {:keys [created-at-name] :or {created-at-name "created-at"} :as opts} clauses]
+  [criteria opts clauses]
 
   (->> (c/attributes criteria)
-       (map (juxt namespace name))
-       (filter (fn [[_ k]] (= created-at-name k)))
-       (map (fn [[n _k]]
-              (let [anchor-attr (resolve-metadata-anchor n opts)]
-                [(criterion-e anchor-attr opts)
-                 anchor-attr
-                 (attr-ref anchor-attr opts)
-                 '?tx
-                 'true])))
+       (keep #(mapped-attr-anchor % opts))
+       distinct
+       (map (fn [anchor-attr]
+              [(criterion-e anchor-attr opts)
+               anchor-attr
+               (attr-ref anchor-attr opts)
+               '?tx
+               'true]))
        (concat clauses)))
 
 (defmethod criteria->where ::stow/map
@@ -719,24 +720,25 @@
       entity-ref
       (symbol (str "?" n)))))
 
-(defn- select-created-at-where
-  "The created-at pseudo-attribute isn't a real Datomic attribute; bind its
-  var to the :db/txInstant of the tx that asserted the namespace's anchor
-  attribute (per :metadata-anchors), the same way criteria on created-at
-  are handled by append-metadata-mappings."
+(defn- select-mapped-attr-where
+  "k isn't a real Datomic attribute; :remap describes it (see working-attr
+  mapped-attr-anchor) as a [target-attr anchor-attr] pseudo-attribute whose
+  value lives on target-attr of the tx that asserted the namespace's
+  anchor-attr, the same way criteria on such attributes are handled by
+  append-metadata-mappings."
   [k ctx]
-  (let [anchor-attr (resolve-metadata-anchor (namespace k) ctx)
+  (let [anchor-attr (mapped-attr-anchor k ctx)
         e-ref (select-attr-e-ref anchor-attr ctx)]
     [[e-ref anchor-attr (attr-ref anchor-attr ctx) '?tx true]
-     ['?tx :db/txInstant (attr-ref k ctx)]]))
+     ['?tx (working-attr k ctx) (attr-ref k ctx)]]))
 
 (defn- apply-select-to-where
-  [{:keys [select created-at-name] :or {created-at-name "created-at"} :as ctx}]
+  [{:keys [select] :as ctx}]
   (if (seq select)
     (let [attrs (remove #(= :id %) select)
-          [created-at other] ((juxt filter remove)
-                               #(= created-at-name (name %))
-                               attrs)]
+          [pseudo other] ((juxt filter remove)
+                           #(mapped-attr-anchor % ctx)
+                           attrs)]
       (update-in ctx
                  [:query :where]
                  concat
@@ -745,7 +747,7 @@
                                  #(vector (select-attr-e-ref % ctx)
                                           %
                                           (attr-ref % ctx)))))
-                 (mapcat #(select-created-at-where % ctx) created-at)
+                 (mapcat #(select-mapped-attr-where % ctx) pseudo)
                  (extract-joining-clauses-from-attributes select ctx)))
     ctx))
 
