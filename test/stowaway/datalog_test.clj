@@ -734,6 +734,32 @@
            {:transaction/created-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
            {:metadata-anchors {:transaction :transaction/transaction-date}}))))
 
+(deftest filter-on-creation-timestamp-with-a-configurable-pseudo-attr-name
+  (is (= '{:find [?x]
+           :where [[?x :transaction/transaction-date ?transaction-date ?tx true]
+                   [?tx :db/txInstant ?recorded-at]
+                   [(>= ?recorded-at ?a)]]
+           :in [?a]
+           :args [#inst "2020-01-01T00:00:00.000Z"]}
+         (dtl/apply-criteria
+           query
+           {:transaction/recorded-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
+           {:metadata-anchors {:transaction :transaction/transaction-date}
+            :created-at-name "recorded-at"}))
+      "The pseudo-attribute name is caller config, not assumed to be
+      literally \"created-at\""))
+
+(deftest filter-on-creation-timestamp-without-a-configured-anchor
+  (is (thrown-with-msg?
+        clojure.lang.ExceptionInfo
+        #"No :metadata-anchors entry found for namespace transaction"
+        (dtl/apply-criteria
+          query
+          {:transaction/created-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
+          {:metadata-anchors {}}))
+      "A meaningful error is raised instead of an NPE when the caller
+      doesn't supply an anchor attribute for the namespace"))
+
 (deftest select-creation-timestamp
   (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
                          :in [?a]
@@ -752,3 +778,38 @@
               :metadata-anchors {:transaction :transaction/transaction-date}}))
         "The created-at pseudo-attribute is resolved via :db/txInstant on
         the tx that asserted the namespace's anchor attribute")))
+
+(deftest select-creation-timestamp-with-a-configurable-pseudo-attr-name
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?x ?recorded-at]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/transaction-date ?transaction-date ?tx true]
+                     [?tx :db/txInstant ?recorded-at]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/recorded-at
+             {:relationships #{[:transaction :transaction-item]}
+              :metadata-anchors {:transaction :transaction/transaction-date}
+              :created-at-name "recorded-at"}))
+        "The pseudo-attribute name is caller config, not assumed to be
+        literally \"created-at\"")))
+
+(deftest select-creation-timestamp-without-a-configured-anchor
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (thrown-with-msg?
+          clojure.lang.ExceptionInfo
+          #"No :metadata-anchors entry found for namespace transaction"
+          (dtl/apply-select
+            q
+            :transaction/created-at
+            {:relationships #{[:transaction :transaction-item]}
+             :metadata-anchors {}}))
+        "A meaningful error is raised instead of an NPE when the caller
+        doesn't supply an anchor attribute for the namespace")))

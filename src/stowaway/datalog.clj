@@ -53,8 +53,8 @@
                 suffix)))))
 
 (defn- working-attr
-  [attr {:keys [remap]}]
-  (if (= "created-at" (name attr))
+  [attr {:keys [remap created-at-name] :or {created-at-name "created-at"}}]
+  (if (= created-at-name (name attr))
     :db/txInstant
     (remap attr attr)))
 
@@ -65,11 +65,15 @@
                             :aliased (s/tuple keyword? keyword? keyword?)))
 (s/def ::relationships (s/coll-of ::relationship :kind set?))
 (s/def ::graph-apex keyword?)
+(s/def ::metadata-anchors (s/map-of keyword? keyword?))
+(s/def ::created-at-name string?)
 (s/def ::options (s/keys :opt-un [::entity-ref
                                   ::remap
                                   ::target
                                   ::relationships
-                                  ::graph-apex]))
+                                  ::graph-apex
+                                  ::metadata-anchors
+                                  ::created-at-name]))
 
 (defn- edge->join-clause
   "Given a graph edge (connection between two namespaces), a source
@@ -313,12 +317,12 @@
                [[] []])))
 
 (defn- criterion-e
-  [k {:keys [entity-ref target]}]
+  [k {:keys [entity-ref target created-at-name] :or {created-at-name "created-at"}}]
   (if target
     (if (or (= :id k)
             (= (name target)
                (namespace k)))
-      (if (= "created-at"
+      (if (= created-at-name
              (name k))
         '?tx
         entity-ref)
@@ -452,14 +456,26 @@
       [(list 'get-else '$ e a (get-in inputs-map [a rep])) v]
       clause)))
 
+(defn- resolve-metadata-anchor
+  "The created-at pseudo-attribute isn't a real Datomic attribute; it's
+  resolved to the :db/txInstant of the tx that asserted the namespace's
+  anchor attribute. Which attribute anchors which namespace is caller
+  config (:metadata-anchors), not something this code should assume."
+  [n {:keys [metadata-anchors]}]
+  (or (get metadata-anchors (keyword n))
+      (throw (ex-info (format "No :metadata-anchors entry found for namespace %s. An anchor attribute is required to resolve created-at for this namespace."
+                              n)
+                      {:namespace n
+                       :metadata-anchors metadata-anchors}))))
+
 (defn- append-metadata-mappings
-  [criteria {:keys [metadata-anchors] :as opts} clauses]
+  [criteria {:keys [created-at-name] :or {created-at-name "created-at"} :as opts} clauses]
 
   (->> (c/attributes criteria)
        (map (juxt namespace name))
-       (filter (fn [[_ k]] (= "created-at" k)))
+       (filter (fn [[_ k]] (= created-at-name k)))
        (map (fn [[n _k]]
-              (let [anchor-attr (metadata-anchors (keyword n))]
+              (let [anchor-attr (resolve-metadata-anchor n opts)]
                 [(criterion-e anchor-attr opts)
                  anchor-attr
                  (attr-ref anchor-attr opts)
@@ -708,18 +724,18 @@
   var to the :db/txInstant of the tx that asserted the namespace's anchor
   attribute (per :metadata-anchors), the same way criteria on created-at
   are handled by append-metadata-mappings."
-  [k {:keys [metadata-anchors] :as ctx}]
-  (let [anchor-attr (metadata-anchors (keyword (namespace k)))
+  [k ctx]
+  (let [anchor-attr (resolve-metadata-anchor (namespace k) ctx)
         e-ref (select-attr-e-ref anchor-attr ctx)]
     [[e-ref anchor-attr (attr-ref anchor-attr ctx) '?tx true]
      ['?tx :db/txInstant (attr-ref k ctx)]]))
 
 (defn- apply-select-to-where
-  [{:keys [select] :as ctx}]
+  [{:keys [select created-at-name] :or {created-at-name "created-at"} :as ctx}]
   (if (seq select)
     (let [attrs (remove #(= :id %) select)
           [created-at other] ((juxt filter remove)
-                               #(= "created-at" (name %))
+                               #(= created-at-name (name %))
                                attrs)]
       (update-in ctx
                  [:query :where]

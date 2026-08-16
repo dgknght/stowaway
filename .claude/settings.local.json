@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(lein test:*)"
+      "Bash(lein test:*)",
+      "Bash(clj-kondo --lint src:test)",
+      "Bash(gh pr *)",
+      "Bash(git stash *)"
     ]
   }
 }
