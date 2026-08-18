@@ -722,14 +722,55 @@
                              [:transaction-item :transaction :items]
                              [:account :transaction-item]}}))))
 
-(deftest filter-on-creation-timestamp
+(deftest filter-on-creation-timestamp-with-a-configurable-pseudo-attr-name
   (is (= '{:find [?x]
-           :where [[?x :transaction/transaction-date ?transaction-date ?tx true]
-                   [?tx :db/txInstant ?created-at]
-                   [(>= ?created-at ?a)]]
+           :where [[?x :transaction/entity ?entity ?tx true]
+                   [?tx :db/txInstant ?recorded-at]
+                   [(>= ?recorded-at ?a)]]
            :in [?a]
            :args [#inst "2020-01-01T00:00:00.000Z"]}
          (dtl/apply-criteria
            query
-           {:transaction/created-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
-           {:metadata-anchors {:transaction :transaction/transaction-date}}))))
+           {:transaction/recorded-at [:>= #inst "2020-01-01T00:00:00.000Z"]}
+           {:remap {:transaction/recorded-at [:db/txInstant :transaction/entity]}}))
+      "The pseudo-attribute name is caller config, not assumed to be
+      literally \"created-at\", and :transaction/entity (never changes
+      after creation) anchors the tx that represents its creation"))
+
+(deftest select-creation-timestamp
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?x ?created-at]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/entity ?entity ?tx true]
+                     [?tx :db/txInstant ?created-at]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/created-at
+             {:relationships #{[:transaction :transaction-item]}
+              :remap {:transaction/created-at [:db/txInstant :transaction/entity]}}))
+        "A pseudo-attribute (per :remap) is resolved via :db/txInstant on
+        the tx that asserted the namespace's anchor attribute")))
+
+(deftest select-creation-timestamp-with-a-configurable-pseudo-attr-name
+  (let [q (merge query '{:where [[?x :transaction-item/account ?a]]
+                         :in [?a]
+                         :args [101]})]
+    (is (= '{:find [?x ?recorded-at]
+             :where [[?x :transaction-item/account ?a]
+                     [?x :transaction-item/transaction ?transaction]
+                     [?transaction :transaction/entity ?entity ?tx true]
+                     [?tx :db/txInstant ?recorded-at]]
+             :in [?a]
+             :args [101]}
+           (dtl/apply-select
+             q
+             :transaction/recorded-at
+             {:relationships #{[:transaction :transaction-item]}
+              :remap {:transaction/recorded-at [:db/txInstant :transaction/entity]}}))
+        "The pseudo-attribute name is caller config, not assumed to be
+        literally \"created-at\"")))

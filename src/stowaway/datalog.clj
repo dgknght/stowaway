@@ -52,14 +52,33 @@
                 (name k)
                 suffix)))))
 
-(defn- working-attr
+(defn- remapped
+  "Look up attr in :remap. The value is either a plain keyword (a simple
+  rename, e.g. :id -> :xt/id) or a [target-attr anchor-attr] tuple
+  describing a pseudo-attribute whose value lives on the :db/txInstant of
+  the tx that asserted anchor-attr (e.g. a created-at attribute that isn't
+  a real Datomic attribute). Absent an entry, attr passes through as-is."
   [attr {:keys [remap]}]
-  (if (= "created-at" (name attr))
-    :db/txInstant
-    (remap attr attr)))
+  (get remap attr attr))
+
+(defn- mapped-attr-anchor
+  "If attr is remapped to a [target-attr anchor-attr] tuple, return
+  anchor-attr; nil for a plain rename or an unmapped attribute."
+  [attr opts]
+  (let [m (remapped attr opts)]
+    (when (vector? m)
+      (second m))))
+
+(defn- working-attr
+  [attr opts]
+  (let [m (remapped attr opts)]
+    (if (vector? m)
+      (first m)
+      m)))
 
 (s/def ::entity-ref symbol?)
-(s/def ::remap (s/map-of keyword? keyword?))
+(s/def ::remap (s/map-of keyword? (s/or :rename keyword?
+                                        :pseudo-attr (s/tuple keyword? keyword?))))
 (s/def ::target keyword?)
 (s/def ::relationship (s/or :plain   (s/tuple keyword? keyword?)
                             :aliased (s/tuple keyword? keyword? keyword?)))
@@ -313,13 +332,12 @@
                [[] []])))
 
 (defn- criterion-e
-  [k {:keys [entity-ref target]}]
+  [k {:keys [entity-ref target] :as opts}]
   (if target
     (if (or (= :id k)
             (= (name target)
                (namespace k)))
-      (if (= "created-at"
-             (name k))
+      (if (mapped-attr-anchor k opts)
         '?tx
         entity-ref)
       (symbol (str "?" (namespace k))))
@@ -453,18 +471,17 @@
       clause)))
 
 (defn- append-metadata-mappings
-  [criteria {:keys [metadata-anchors] :as opts} clauses]
+  [criteria opts clauses]
 
   (->> (c/attributes criteria)
-       (map (juxt namespace name))
-       (filter (fn [[_ k]] (= "created-at" k)))
-       (map (fn [[n _k]]
-              (let [anchor-attr (metadata-anchors (keyword n))]
-                [(criterion-e anchor-attr opts)
-                 anchor-attr
-                 (attr-ref anchor-attr opts)
-                 '?tx
-                 'true])))
+       (keep #(mapped-attr-anchor % opts))
+       distinct
+       (map (fn [anchor-attr]
+              [(criterion-e anchor-attr opts)
+               anchor-attr
+               (attr-ref anchor-attr opts)
+               '?tx
+               'true]))
        (concat clauses)))
 
 (defmethod criteria->where ::stow/map
@@ -696,26 +713,42 @@
                       f)))
     ctx))
 
+(defn- select-attr-e-ref
+  [k {:keys [entity-ref target] :or {entity-ref '?x}}]
+  (let [n (namespace k)]
+    (if (= target (keyword n))
+      entity-ref
+      (symbol (str "?" n)))))
+
+(defn- select-mapped-attr-where
+  "k isn't a real Datomic attribute; :remap describes it (see working-attr
+  mapped-attr-anchor) as a [target-attr anchor-attr] pseudo-attribute whose
+  value lives on target-attr of the tx that asserted the namespace's
+  anchor-attr, the same way criteria on such attributes are handled by
+  append-metadata-mappings."
+  [k ctx]
+  (let [anchor-attr (mapped-attr-anchor k ctx)
+        e-ref (select-attr-e-ref anchor-attr ctx)]
+    [[e-ref anchor-attr (attr-ref anchor-attr ctx) '?tx true]
+     ['?tx (working-attr k ctx) (attr-ref k ctx)]]))
+
 (defn- apply-select-to-where
-  [{:keys [select
-           entity-ref
-           target]
-    :or {entity-ref '?x}
-    :as ctx}]
+  [{:keys [select] :as ctx}]
   (if (seq select)
-    (update-in ctx
-               [:query :where]
-               concat
-               (->> select
-                    (remove #(= :id %))
-                    (map (comp (replace-nil ctx)
-                               #(let [n (namespace %)]
-                                  (vector (if (= target (keyword n))
-                                            entity-ref
-                                            (symbol (str "?" n)))
+    (let [attrs (remove #(= :id %) select)
+          [pseudo other] ((juxt filter remove)
+                           #(mapped-attr-anchor % ctx)
+                           attrs)]
+      (update-in ctx
+                 [:query :where]
+                 concat
+                 (->> other
+                      (map (comp (replace-nil ctx)
+                                 #(vector (select-attr-e-ref % ctx)
                                           %
-                                          (attr-ref % ctx))))))
-               (extract-joining-clauses-from-attributes select ctx))
+                                          (attr-ref % ctx)))))
+                 (mapcat #(select-mapped-attr-where % ctx) pseudo)
+                 (extract-joining-clauses-from-attributes select ctx)))
     ctx))
 
 (defn- extract-select-inputs
